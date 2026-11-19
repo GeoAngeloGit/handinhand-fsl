@@ -801,9 +801,10 @@ CREATE TABLE `class` (
   `class_title` varchar(200) NOT NULL,
   `description` text DEFAULT NULL,
   `max_capacity` int(11) NOT NULL CHECK (`max_capacity` > 0),
-  `current_enrolled` int(11) NOT NULL DEFAULT 0 CHECK (`current_enrolled` >= 0 and `current_enrolled` <= `max_capacity`),
+  `current_enrolled` int(11) NOT NULL DEFAULT 0 CHECK (`current_enrolled` >= 0),
   `status` enum('Draft','Open','Ongoing','Completed','Cancelled') NOT NULL DEFAULT 'Open',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  CHECK (`current_enrolled` <= `max_capacity`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -816,7 +817,7 @@ CREATE TABLE `class_enrollments` (
   `enrollment_id` int(11) NOT NULL,
   `class_id` int(11) NOT NULL,
   `learner_id` int(11) NOT NULL,
-  `enrollment_date` date NOT NULL DEFAULT curdate(),
+  `enrollment_date` date NOT NULL DEFAULT (curdate()),
   `status` enum('enrolled','dropped','completed') NOT NULL DEFAULT 'enrolled'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -831,11 +832,12 @@ CREATE TABLE `class_schedule` (
   `class_id` int(11) NOT NULL,
   `session_date` date NOT NULL,
   `start_time` time NOT NULL,
-  `end_time` time NOT NULL CHECK (`end_time` > `start_time`),
+  `end_time` time NOT NULL,
   `venue` varchar(255) DEFAULT NULL,
   `status` enum('scheduled','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
   `remarks` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  CHECK (`end_time` > `start_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
