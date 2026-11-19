@@ -1,0 +1,211 @@
+:root {
+    --maroon-deep: #5B0F2B;
+    --berry-surface: #8D2645;
+    --steel-blue: #2E5D8A;
+    --steel-blue-hover: #244b70;
+    --input-gray: #E5E7EB;
+    --input-focus: #FFFFFF;
+    --border-light: rgba(255, 255, 255, 0.55);
+    --divider-light: rgba(255, 255, 255, 0.32);
+    --surface-white: #FFFFFF;
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-sans);
+    background-color: #F3F4F6;
+    color: var(--surface-white);
+    min-height: 100vh;
+}
+
+.page-wrapper {
+    padding: 20px;
+}
+
+.outer-maroon-shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    background-color: var(--maroon-deep);
+    border-radius: 30px;
+    padding: 32px 44px 48px;
+    box-shadow: 0 20px 45px rgba(91, 15, 43, 0.18);
+}
+
+/* ==================== TOP BAR ==================== */
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding: 0 8px;
+}
+
+.brand-logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--surface-white);
+    text-decoration: none;
+}
+
+.top-signin-link {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+}
+
+.top-signin-link strong {
+    color: #D7A5B2;
+    text-decoration: underline;
+}
+
+.top-signin-link:hover strong {
+    color: var(--surface-white);
+}
+
+/* ==================== BERRY INNER CARD ==================== */
+.inner-berry-card {
+    background-color: var(--berry-surface);
+    border-radius: 26px;
+    padding: 32px 36px 40px;
+}
+
+.page-title {
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    padding-left: 6px;
+}
+
+/* Outlined Container matching Figma */
+.outlined-form-box {
+    border: 1.5px solid var(--border-light);
+    border-radius: 24px;
+    padding: 28px 30px 32px;
+}
+
+.form-section {
+    border: none;
+}
+
+.form-section legend {
+    font-family: var(--font-serif);
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--surface-white);
+}
+
+.scope-note {
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #F3D1DA;
+}
+
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px 22px;
+}
+
+.mt-16 {
+    margin-top: 16px;
+}
+
+.field label {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.94);
+    margin-bottom: 6px;
+    padding-left: 4px;
+}
+
+.req {
+    color: #FFD1DC;
+}
+
+.field input,
+.field select {
+    width: 100%;
+    height: 44px;
+    background-color: var(--input-gray);
+    border: 2px solid transparent;
+    border-radius: 13px;
+    padding: 0 14px;
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    color: var(--maroon-deep);
+    outline: none;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.field input::placeholder {
+    color: #7A5C66;
+}
+
+.field input:focus,
+.field select:focus {
+    background-color: var(--input-focus);
+    border-color: var(--steel-blue);
+}
+
+.section-divider {
+    border: none;
+    border-top: 1px solid var(--divider-light);
+    margin: 22px 0;
+}
+
+/* ==================== SUBMIT BUTTON ==================== */
+.submit-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.btn-create-account {
+    background-color: var(--steel-blue);
+    color: var(--surface-white);
+    border: none;
+    border-radius: 999px;
+    padding: 14px 44px;
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(24, 52, 79, 0.35);
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.btn-create-account:hover {
+    background-color: var(--steel-blue-hover);
+    transform: translateY(-2px);
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 860px) {
+    .outer-maroon-shell {
+        padding: 24px 20px 32px;
+    }
+
+    .inner-berry-card {
+        padding: 24px 18px 28px;
+    }
+
+    .outlined-form-box {
+        padding: 20px 18px 24px;
+    }
+
+    .grid-3 {
+        grid-template-columns: 1fr;
+    }
+}
