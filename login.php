@@ -1,3 +1,19 @@
+<?php
+require_once __DIR__ . '/db_connect.php';
+
+// Already signed in? Skip the form.
+if (!empty($_SESSION['logged_in'])) {
+    header('Location: ' . (ROLE_DASHBOARD[$_SESSION['role_id']] ?? 'index.php'));
+    exit;
+}
+$errors = [
+    'invalid' => 'Invalid email/username or password.',
+    'locked'  => 'Too many failed attempts. Please try again in 15 minutes.',
+    'csrf'    => 'Your session expired. Please try again.',
+];
+$error = $errors[$_GET['error'] ?? ''] ?? '';
+$registered = isset($_GET['registered']);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,10 +61,14 @@
             
             <h1>Sign In</h1>
 
-            <!-- PHP Error Alert Placeholder (Show via PHP if login fails) -->
-            <!-- <div class="alert-error">Invalid email/username or password.</div> -->
+            <?php if ($error): ?>
+                <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
+            <?php elseif ($registered): ?>
+                <div class="alert-error" style="background:#e6f4ea;color:#135c2a;">Account created! Please sign in.</div>
+            <?php endif; ?>
 
             <form action="login_process.php" method="POST" class="login-form">
+                <?php echo csrf_field(); ?>
                 <div class="form-group">
                     <label for="login_identifier">Email or Username</label>
                     <input 
@@ -84,7 +104,7 @@
             </form>
 
             <p class="switch-auth">
-                New Learner? <a href="register.html">Create an Account</a>
+                New Learner? <a href="register.php">Create an Account</a>
             </p>
         </div>
     </main>

@@ -1,26 +1,18 @@
 <?php
-session_start();
+require_once __DIR__ . '/db_connect.php';
 
 $error_message = "";
 $success_message = "";
 
-// Preserve entered values if validation fails
 $old = [
-    "username" => "",
-    "email" => "",
-    "first_name" => "",
-    "middle_name" => "",
-    "last_name" => "",
-    "birthdate" => "",
-    "gender" => "",
-    "contact_number" => "",
-    "municipality_id" => "",
-    "barangay_id" => "",
-    "street_address" => "",
-    "hearing_status" => "",
-    "speech_status" => "",
-    "accessibility_notes" => ""
+    "username" => "", "email" => "", "first_name" => "", "middle_name" => "",
+    "last_name" => "", "birthdate" => "", "gender" => "", "contact_number" => "",
+    "municipality_id" => "", "barangay_id" => "", "street_address" => "",
+    "hearing_status" => "", "speech_status" => "", "accessibility_notes" => ""
 ];
+
+// Barangays for the dependent Municipality -> Barangay dropdown
+$barangay_rows = $conn->query("SELECT barangay_id, municipality_id, barangay_name FROM barangays ORDER BY barangay_name")->fetch_all(MYSQLI_ASSOC);
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     foreach ($old as $key => $val) {
@@ -28,26 +20,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
     $password = $_POST["password"] ?? "";
 
-    // Allowed values matching Data Dictionary CHECK constraints
     $valid_hearing = ["Hearing", "Mild to Moderate", "Severe", "Profoundly Deaf"];
     $valid_speech  = ["Verbal", "Hard of Speech", "Non-Verbal / Mute"];
+    $valid_gender  = ["Male", "Female", "Prefer not to say"];
 
-    if (empty($old["username"]) || empty($old["email"]) || empty($password) || empty($old["first_name"]) || empty($old["last_name"])) {
+    if (!csrf_verify($_POST["csrf_token"] ?? null)) {
+        $error_message = "Your session expired. Please reload the page and try again.";
+    } elseif ($old["username"] === "" || $old["email"] === "" || $password === "" || $old["first_name"] === "" || $old["last_name"] === "" || $old["birthdate"] === "" || $old["gender"] === "" || $old["contact_number"] === "" || $old["municipality_id"] === "") {
         $error_message = "Please fill out all required fields marked with (*).";
+    } elseif (!preg_match('/^[A-Za-z0-9_.]{3,30}$/', $old["username"])) {
+        $error_message = "Username must be 3-30 characters: letters, numbers, underscore or period.";
+    } elseif (!filter_var($old["email"], FILTER_VALIDATE_EMAIL)) {
+        $error_message = "Please enter a valid email address.";
+    } elseif (strlen($password) < 8) {
+        $error_message = "Password must be at least 8 characters.";
+    } elseif (!ctype_digit($old["barangay_id"]) || !ctype_digit($old["municipality_id"])) {
+        $error_message = "Please select your municipality and barangay.";
     } elseif (!in_array($old["hearing_status"], $valid_hearing, true) || !in_array($old["speech_status"], $valid_speech, true)) {
         $error_message = "Please select valid Hearing Status and Speech Status options.";
+    } elseif (!in_array($old["gender"], $valid_gender, true)) {
+        $error_message = "Please select a valid gender option.";
+    } elseif ((!($d = DateTime::createFromFormat('Y-m-d', $old["birthdate"])) || $d->format('Y-m-d') !== $old["birthdate"] || $d > new DateTime('today'))) {
+        $error_message = "Please enter a valid birthdate.";
     } else {
-        /* =====================================================================
-           BACKEND TEAMMATE TODO: Run inside a MySQL Transaction:
-           1. Hash password: $hash = password_hash($password, PASSWORD_DEFAULT);
-           2. INSERT INTO Accounts (role_id, username, email, password_hash)
-           3. $account_id = $conn->insert_id;
-           4. INSERT INTO Learners (account_id, first_name, middle_name, last_name,
-              birthdate, contact_number, gender, hearing_status, speech_status,
-              accessibility_notes, barangay_id, street_address)
-           5. Redirect to login.php?registered=1
-           ===================================================================== */
-        $success_message = "Form validated! Ready for MySQL transaction insert into Accounts and Learners.";
+        try {
+            register_learner($conn, $old, $password); // hashes password, inserts Accounts + Learners in a transaction
+            header("Location: login.php?registered=1");
+            exit;
+        } catch (RuntimeException $e) {
+            $error_message = $e->getMessage();
+        }
     }
 }
 ?>
@@ -93,6 +95,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <div class="outlined-form-box">
                     <form action="register.php" method="POST" id="registerForm">
+                        <?php echo csrf_field(); ?>
                         
                         <!-- SECTION 1: ACCOUNT CREDENTIALS -->
                         <fieldset class="form-section">
@@ -135,22 +138,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                             <div class="grid-3 mt-16">
                                 <div class="field">
-                                    <label for="birthdate">Birthdate</label>
-                                    <input type="date" id="birthdate" name="birthdate" value="<?php echo htmlspecialchars($old['birthdate']); ?>">
+                                    <label for="birthdate">Birthdate <span class="req">*</span></label>
+                                    <input type="date" id="birthdate" name="birthdate" required value="<?php echo htmlspecialchars($old['birthdate']); ?>">
                                 </div>
                                 <div class="field">
-                                    <label for="gender">Gender</label>
-                                    <select id="gender" name="gender">
+                                    <label for="gender">Gender <span class="req">*</span></label>
+                                    <select id="gender" name="gender" required>
                                         <option value="">Select Gender</option>
                                         <option value="Male" <?php if ($old['gender'] === 'Male') echo 'selected'; ?>>Male</option>
                                         <option value="Female" <?php if ($old['gender'] === 'Female') echo 'selected'; ?>>Female</option>
-                                        <option value="Non-binary" <?php if ($old['gender'] === 'Non-binary') echo 'selected'; ?>>Non-binary</option>
                                         <option value="Prefer not to say" <?php if ($old['gender'] === 'Prefer not to say') echo 'selected'; ?>>Prefer not to say</option>
                                     </select>
                                 </div>
                                 <div class="field">
-                                    <label for="contact_number">Contact Number</label>
-                                    <input type="tel" id="contact_number" name="contact_number" maxlength="50" value="<?php echo htmlspecialchars($old['contact_number']); ?>" placeholder="09XX XXX XXXX">
+                                    <label for="contact_number">Contact Number <span class="req">*</span></label>
+                                    <input type="tel" id="contact_number" name="contact_number" required maxlength="50" value="<?php echo htmlspecialchars($old['contact_number']); ?>" placeholder="09XX XXX XXXX">
                                 </div>
                             </div>
                         </fieldset>
@@ -188,9 +190,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                                 <div class="field">
                                     <label for="barangay_id">Barangay <span class="req">*</span></label>
                                     <select id="barangay_id" name="barangay_id" required>
-                                        <option value="">Select Barangay</option>
-                                        <!-- Sample option until backend populates from Barangays table -->
-                                        <option value="1">Barangay 1 - Em's Barrio</option>
+                                        <option value="">Select Municipality first</option>
                                     </select>
                                 </div>
                                 <div class="field">
@@ -245,5 +245,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
     </div>
 
+
+    <script>
+        // Dependent dropdown: barangays are loaded from the database
+        const BARANGAYS = <?php echo json_encode($barangay_rows, JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+        const OLD_MUNI = <?php echo json_encode($old['municipality_id']); ?>;
+        const OLD_BRGY = <?php echo json_encode($old['barangay_id']); ?>;
+        const muniSel = document.getElementById('municipality_id');
+        const brgySel = document.getElementById('barangay_id');
+
+        function fillBarangays(muniId, selected) {
+            brgySel.innerHTML = '';
+            const first = document.createElement('option');
+            first.value = '';
+            first.textContent = muniId ? 'Select Barangay' : 'Select Municipality first';
+            brgySel.appendChild(first);
+            BARANGAYS.filter(b => String(b.municipality_id) === String(muniId)).forEach(b => {
+                const o = document.createElement('option');
+                o.value = b.barangay_id;
+                o.textContent = b.barangay_name;
+                if (String(b.barangay_id) === String(selected)) o.selected = true;
+                brgySel.appendChild(o);
+            });
+        }
+        muniSel.addEventListener('change', () => fillBarangays(muniSel.value, ''));
+        if (OLD_MUNI) { muniSel.value = OLD_MUNI; fillBarangays(OLD_MUNI, OLD_BRGY); }
+    </script>
 </body>
 </html>
