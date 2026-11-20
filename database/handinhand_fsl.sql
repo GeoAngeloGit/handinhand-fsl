@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 20, 2026 at 01:53 PM
+-- Generation Time: Nov 20, 2026 at 03:33 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -21,6 +21,37 @@ SET time_zone = "+00:00";
 -- Database: `handinhand_fsl`
 --
 
+DELIMITER $$
+--
+-- Procedures
+--
+DROP PROCEDURE IF EXISTS `sp_create_class`$$
+CREATE DEFINER=`` PROCEDURE `sp_create_class` (IN `p_created_by` INT, IN `p_class_title` VARCHAR(200), IN `p_description` TEXT, IN `p_max_capacity` INT, IN `p_status` ENUM('Draft','Open','Ongoing','Completed','Cancelled'), IN `p_teacher_id` INT, IN `p_assigned_role` ENUM('Lead Instructor','Co-Teacher','Substitute'), IN `p_session_date` DATE, IN `p_start_time` TIME, IN `p_end_time` TIME, IN `p_venue` VARCHAR(255))   BEGIN
+  DECLARE v_class_id INT;
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+    INSERT INTO `class` (`created_by`, `class_title`, `description`, `max_capacity`, `status`)
+    VALUES (p_created_by, p_class_title, p_description, p_max_capacity, IFNULL(p_status, 'Open'));
+
+    SET v_class_id = LAST_INSERT_ID();
+
+    INSERT INTO `class_teacher` (`class_id`, `teacher_id`, `assigned_role`)
+    VALUES (v_class_id, p_teacher_id, IFNULL(p_assigned_role, 'Lead Instructor'));
+
+    INSERT INTO `class_schedule` (`class_id`, `session_date`, `start_time`, `end_time`, `venue`)
+    VALUES (v_class_id, p_session_date, p_start_time, p_end_time, p_venue);
+  COMMIT;
+
+  SELECT v_class_id AS `class_id`;
+END$$
+
+DELIMITER ;
+
 -- --------------------------------------------------------
 
 --
@@ -36,6 +67,14 @@ CREATE TABLE `accounts` (
   `password_hash` varchar(255) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `accounts`
+--
+
+INSERT INTO `accounts` (`account_id`, `role_id`, `username`, `email`, `password_hash`, `created_at`) VALUES
+(1, 3, 'geolabalan', 'geolabalan@gmail.com', '$2y$10$2jbIBfgkQLbG9rz70ssWSu/wryC8knwMRY65ze7uIO7dsxfjdbERW', '2026-11-20 12:58:36'),
+(3, 2, 'angelogeo', 'angelonavera@gmail.com', '$2y$10$7lC.GA0/RRwfv0rB2LKfLuOTYppzLouBStXIs04JGyGFj1jIDnad6', '2026-11-20 13:19:28');
 
 -- --------------------------------------------------------
 
@@ -883,6 +922,13 @@ CREATE TABLE `learners` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `learners`
+--
+
+INSERT INTO `learners` (`learner_id`, `account_id`, `barangay_id`, `first_name`, `middle_name`, `last_name`, `birthdate`, `gender`, `contact_number`, `hearing_status`, `speech_status`, `accessibility_notes`, `street_address`, `is_active`, `created_at`) VALUES
+(1, 1, 245, 'Geo Angelo', 'Navera', 'Labalan', '2005-03-09', 'Male', '09515482963', 'Hearing', 'Verbal', 'None', '21, P3 - Guevarra Subdivision', 1, '2026-11-20 12:58:36');
+
 -- --------------------------------------------------------
 
 --
@@ -1012,6 +1058,13 @@ CREATE TABLE `teachers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Dumping data for table `teachers`
+--
+
+INSERT INTO `teachers` (`teacher_id`, `account_id`, `barangay_id`, `first_name`, `middle_name`, `last_name`, `gender`, `birthdate`, `street_address`, `contact_number`, `specialization`, `years_of_experience`, `is_active`) VALUES
+(1, 3, 114, 'Angelo Geo', 'Dela', 'Cruz', 'Male', '2005-01-01', 'P2, Rizal St.', '09123456789', 'Basic FSL', 4, 1);
+
+--
 -- Indexes for dumped tables
 --
 
@@ -1128,7 +1181,7 @@ ALTER TABLE `teachers`
 -- AUTO_INCREMENT for table `accounts`
 --
 ALTER TABLE `accounts`
-  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `administrators`
@@ -1164,7 +1217,7 @@ ALTER TABLE `class_schedule`
 -- AUTO_INCREMENT for table `learners`
 --
 ALTER TABLE `learners`
-  MODIFY `learner_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `learner_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `municipalities`
@@ -1200,7 +1253,7 @@ ALTER TABLE `session_attendance`
 -- AUTO_INCREMENT for table `teachers`
 --
 ALTER TABLE `teachers`
-  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- Constraints for dumped tables
