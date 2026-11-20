@@ -1,7 +1,5 @@
 <?php
-
-session_start();
-require_once 'db.php';
+require_once __DIR__ . '/db_connect.php';
 
 $pending = $_SESSION['pending_reg'] ?? null;
 $role = $_GET['role'] ?? ($pending['role'] ?? 'learner');
@@ -102,14 +100,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $accessibility_notes = trim($_POST['accessibility_notes'] ?? '') ?: null;
 
     $has_current_input = ($first_name !== '' || $last_name !== '' || $birthdate !== '');
+    $valid_hearing = ["Hearing", "Mild to Moderate", "Severe", "Profoundly Deaf"];
+    $valid_speech  = ["Verbal", "Hard of Speech", "Non-Verbal / Mute"];
+    $valid_gender  = ["Male", "Female", "Prefer not to say"];
 
-    if (empty($username) || empty($email) || empty($password_hash)) {
+    if (!csrf_verify($_POST['csrf_token'] ?? null)) {
+        $error_message = "Your session expired. Please reload the page and try again.";
+    } elseif (empty($username) || empty($email) || empty($password_hash)) {
         $error_message = "Account credentials are missing. Please complete Step 1 first.";
     } elseif ($action === 'add_another' || $has_current_input || empty($_SESSION['reg_profiles'])) {
         if (empty($first_name) || empty($last_name) || empty($birthdate) || empty($gender) || empty($contact_number) || $municipality_id <= 0 || $barangay_id <= 0) {
             $error_message = "Please fill out all required personal and Albay address fields (*).";
-        } elseif (!$is_educator && (empty($hearing_status) || empty($speech_status))) {
-            $error_message = "Please select both Hearing Status and Speech Status.";
+        } elseif (!in_array($gender, $valid_gender, true)) {
+            $error_message = "Please select a valid gender option.";
+        } elseif (!($d = DateTime::createFromFormat('Y-m-d', $birthdate)) || $d->format('Y-m-d') !== $birthdate || $d > new DateTime('today')) {
+            $error_message = "Please enter a valid birthdate.";
+        } elseif (!$is_educator && (!in_array($hearing_status, $valid_hearing, true) || !in_array($speech_status, $valid_speech, true))) {
+            $error_message = "Please select valid Hearing Status and Speech Status options.";
         } else {
             $profile_entry = [
                 'first_name' => $first_name,
@@ -167,8 +174,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $conn->commit();
 
-                $_SESSION['account_id'] = $account_id;
-                $_SESSION['role_id'] = $role_id;
+                login_user([
+                    'account_id' => $account_id,
+                    'username'   => $username,
+                    'email'      => $email,
+                    'role_id'    => $role_id,
+                ]);
                 if (!$is_educator && !empty($created_ids)) {
                     $_SESSION['active_learner_id'] = $created_ids[0];
                 }
@@ -342,6 +353,7 @@ $account_email_display = $pending['email'] ?? 'juan.delacruz@gmail.com';
                     <?php endif; ?>
 
                     <form action="register.php?role=<?php echo htmlspecialchars($role); ?>" method="POST" id="profileForm">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="role" value="<?php echo htmlspecialchars($role); ?>">
                         <input type="hidden" name="submit_action" id="submit_action" value="finish">
 
@@ -539,6 +551,5 @@ $account_email_display = $pending['email'] ?? 'juan.delacruz@gmail.com';
         }
     </script>
 <?php endif; ?>
-
 </body>
 </html>

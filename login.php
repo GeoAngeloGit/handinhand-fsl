@@ -1,44 +1,28 @@
 <?php
-/**
- * ============================================================================
- * BACKEND INTEGRATION GUIDE: login.php (Unified Sign In & Step 1 Registration)
- * ============================================================================
- * 1. LOGIN FLOW (`$_POST['form_type'] === 'login'`):
- *    - Inputs: `$_POST['login_identifier']` (matches `accounts.username` OR `accounts.email`)
- *              `$_POST['login_password']`   (verify via `password_verify()`)
- *    - Query :
- *        SELECT a.account_id, a.role_id, a.username, a.password_hash, r.role_name
- *        FROM accounts a
- *        JOIN roles r ON a.role_id = r.role_id
- *        WHERE a.username = ? OR a.email = ? LIMIT 1;
- *    - Required Session Variables to Set on Success:
- *        $_SESSION['account_id'] = $user['account_id'];
- *        $_SESSION['role_id']    = $user['role_id'];
- *        $_SESSION['username']   = $user['username'];
- *    - Role-Based Redirects (`roles` table):
- *        - role_id = 1 ('Admin')   -> Fetch `admin_id` from `administrators`, set
- *                                     `$_SESSION['admin_id']`, redirect to `admin_dashboard.php`
- *        - role_id = 2 ('Teacher') -> Fetch `teacher_id` from `teachers` (check `is_active = 1`),
- *                                     set `$_SESSION['teacher_id']`, redirect to `teacher_dashboard.php`
- *        - role_id = 3 ('Learner') -> Fetch first `learner_id` from `learners` WHERE `account_id = ?`
- *                                     AND `is_active = 1`, set `$_SESSION['active_learner_id']`,
- *                                     redirect to `learner_dashboard.php`
- *
- * 2. STEP 1 REGISTRATION FLOW (`$_POST['form_type'] === 'register'`):
- *    - Hashes password and saves `$_SESSION['pending_reg']` (`role`, `username`, `email`, `password_hash`),
- *      then redirects to `register.php`.
- * ============================================================================
- */
-session_start();
-require_once 'db.php';
+require_once __DIR__ . '/db_connect.php';
+
+// Already signed in? Skip the form.
+if (!empty($_SESSION['logged_in'])) {
+    header('Location: ' . (ROLE_DASHBOARD[$_SESSION['role_id']] ?? 'index.php'));
+    exit;
+}
 
 $mode = ($_GET['mode'] ?? 'login') === 'register' ? 'register' : 'login';
-$error_message = '';
+$errors = [
+    'invalid' => 'Invalid email/username or password.',
+    'locked'  => 'Too many failed attempts. Please try again in 15 minutes.',
+    'csrf'    => 'Your session expired. Please try again.',
+];
+$error_message = $errors[$_GET['error'] ?? ''] ?? '';
+$registered = isset($_GET['registered']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form_type = $_POST['form_type'] ?? 'login';
 
-    if ($form_type === 'register') {
+    if (!csrf_verify($_POST['csrf_token'] ?? null)) {
+        $mode = $form_type === 'register' ? 'register' : 'login';
+        $error_message = $errors['csrf'];
+    } elseif ($form_type === 'register') {
         $mode = 'register';
         $role = ($_POST['role'] ?? 'learner') === 'educator' ? 'educator' : 'learner';
         $username = trim($_POST['reg_username'] ?? '');
@@ -61,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $duplicate = true;
                     $error_message = 'That username or email is already taken.';
                 }
+                $stmt->close();
             }
 
             if (!$duplicate) {
@@ -77,47 +62,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($form_type === 'login') {
         $mode = 'login';
-        $identifier = trim($_POST['login_identifier'] ?? '');
-        $password = $_POST['login_password'] ?? '';
 
-        if (empty($identifier) || empty($password)) {
-            $error_message = 'Please enter your username/email and password.';
-        } elseif ($conn) {
-            $stmt = $conn->prepare("SELECT account_id, role_id, username, password_hash FROM accounts WHERE username = ? OR email = ? LIMIT 1");
-            $stmt->bind_param("ss", $identifier, $identifier);
-            $stmt->execute();
-            $res = $stmt->get_result();
+        if (($_SESSION['lockout_until'] ?? 0) > time()) {
+            $error_message = $errors['locked'];
+        } else {
+            $identifier = trim($_POST['login_identifier'] ?? '');
+            $password = $_POST['login_password'] ?? ($_POST['password'] ?? '');
 
-            if ($user = $res->fetch_assoc()) {
-                if (password_verify($password, $user['password_hash'])) {
-                    $_SESSION['account_id'] = (int)$user['account_id'];
-                    $_SESSION['role_id']    = (int)$user['role_id'];
-                    $_SESSION['username']   = $user['username'];
+            if (empty($identifier) || empty($password)) {
+                $error_message = 'Please enter your username/email and password.';
+            } else {
+                $account = authenticate($conn, $identifier, $password);
 
-                    if ($user['role_id'] == 1) {
-                        header("Location: admin_dashboard.php");
-                        exit;
-                    } elseif ($user['role_id'] == 2) {
-                        header("Location: teacher_dashboard.php");
-                        exit;
+                if ($account === null) {
+                    $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+                    if ($_SESSION['login_attempts'] >= 5) {
+                        $_SESSION['lockout_until'] = time() + 900;
+                        $error_message = $errors['locked'];
                     } else {
+                        $error_message = $errors['invalid'];
+                    }
+                } else {
+                    login_user($account);
+
+                    if ((int)$account['role_id'] === ROLE_LEARNER) {
                         $l_stmt = $conn->prepare("SELECT learner_id FROM learners WHERE account_id = ? AND is_active = 1 ORDER BY learner_id ASC LIMIT 1");
-                        $l_stmt->bind_param("i", $user['account_id']);
+                        $l_stmt->bind_param("i", $account['account_id']);
                         $l_stmt->execute();
                         if ($l_row = $l_stmt->get_result()->fetch_assoc()) {
                             $_SESSION['active_learner_id'] = (int)$l_row['learner_id'];
                         }
-                        header("Location: learner_dashboard.php");
-                        exit;
+                        $l_stmt->close();
                     }
-                } else {
-                    $error_message = 'Incorrect password. Please try again.';
+
+                    $dest = post_login_destination($conn, (int)$account['account_id'], (int)$account['role_id']);
+                    header("Location: " . $dest);
+                    exit;
                 }
-            } else {
-                $error_message = 'No account found with that username or email.';
             }
-        } else {
-            $error_message = 'Database connection unavailable. Please start MySQL in XAMPP.';
         }
     }
 }
@@ -177,6 +159,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?php if (!empty($error_message)): ?>
                     <div class="alert-box error" role="alert"><?php echo htmlspecialchars($error_message); ?></div>
+                <?php elseif ($registered): ?>
+                    <div class="alert-box" style="background:#e6f4ea;color:#135c2a;border:1px solid #b7dfc5;" role="status">Account created! Please sign in.</div>
                 <?php endif; ?>
 
                 <!-- ==================== VIEW 1: CREATE ACCOUNT ==================== -->
@@ -185,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <p class="form-subtitle">Create your free account to start learning or mentoring.</p>
 
                     <form action="login.php?mode=register" method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="form_type" value="register">
                         <input type="hidden" name="role" id="roleInput" value="learner">
 
@@ -239,6 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <p class="form-subtitle">Sign in to access your classes, schedules, and community.</p>
 
                     <form action="login.php?mode=login" method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="form_type" value="login">
 
                         <div class="field mt-16">
