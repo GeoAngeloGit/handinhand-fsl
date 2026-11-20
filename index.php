@@ -47,7 +47,7 @@
                     <p>
                         Spend less time on paperwork and more time teaching—keep schedules, registrations, and class reports in one place.
                     </p>
-                    <a href="register.php" class="btn-blush">GET STARTED</a>
+                    <a href="login.php?mode=register" class="btn-blush">GET STARTED</a>
                 </div>
 
                 <!-- Right Interactive Sign Card -->
@@ -152,16 +152,14 @@
                         </div>
                         <p class="stat-caption">Active FSL learners &amp; volunteer mentors across Albay</p>
                         <hr class="stat-divider">
-                        <span class="stat-plus">+42</span>
                         <div class="avatar-dots">
-                            <span class="dot d1"></span>
-                            <span class="dot d2"></span>
-                            <span class="dot d3"></span>
-                            <span class="dot d4"></span>
-                            <span class="dot d5"></span>
+                            <span class="dot d1">JJ</span>
+                            <span class="dot d2">GL</span>
+                            <span class="dot d3">RC</span>
+                            <span class="dot d4">ZB</span>
+                            <span class="dot d5">+42</span>
                         </div>
                     </div>
-
                     <div class="bento-block maroon-berry medium"></div>
                 </div>
             </div>
@@ -177,55 +175,55 @@
         </div>
     </section>
 
-    <!-- ==================== CONTACT / FOOTER SECTION ==================== -->
-    <footer class="contact-footer" id="contact-us">
-        <div class="container contact-grid">
-            <div class="contact-info">
-                <span class="eyebrow-light">GET IN TOUCH</span>
-                <h2>Connect with our<br>signing community</h2>
-                <p>
-                    Whether you are a learner starting your first signs, a volunteer FSL instructor, or a local hub across Albay, we would love to hear from you.
-                </p>
+ <!-- ==================== CONTACT / FOOTER SECTION ==================== -->
+<footer class="contact-footer" id="contact-us">
+    <div class="container contact-grid">
+        <div class="contact-info">
+            <span class="eyebrow-light">GET IN TOUCH</span>
+            <h2>Connect with our<br>signing community</h2>
+            <p>
+                Whether you are a learner starting your first signs, a volunteer FSL instructor, or a local hub across Albay, we would love to hear from you.
+            </p>
 
-                <div class="hub-list">
-                    <div class="hub-item">
-                        <div class="hub-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                                <circle cx="12" cy="10" r="3"></circle>
-                            </svg>
-                        </div>
-                        <div>
-                            <span class="hub-label">COMMUNITY HUBS</span>
-                            <strong class="hub-value">Albay Province, Bicol Region</strong>
-                        </div>
+            <div class="hub-list">
+                <div class="hub-item">
+                    <div class="hub-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
                     </div>
-
-                    <div class="hub-item">
-                        <div class="hub-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                <polyline points="22,6 12,13 2,6"></polyline>
-                            </svg>
-                        </div>
-                        <div>
-                            <span class="hub-label">COORDINATOR DESK</span>
-                            <strong class="hub-value">handinhand.fsl@bicol-u.edu.ph</strong>
-                        </div>
+                    <div>
+                        <span class="hub-label">COMMUNITY HUBS</span>
+                        <strong class="hub-value">Albay Province, Bicol Region</strong>
                     </div>
                 </div>
-            </div>
 
-            <div class="contact-card">
-                <h3>Ready to join a class?</h3>
-                <p>Create your learner or volunteer profile to view upcoming Albay FSL sessions.</p>
-                <div class="contact-card-actions">
-                    <a href="register.php" class="btn-blush full-width">Register Now</a>
-                    <a href="login.php" class="btn-outline-light full-width">Sign In to Portal</a>
+                <div class="hub-item">
+                    <div class="hub-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="hub-label">COORDINATOR DESK</span>
+                        <strong class="hub-value">handinhand.fsl@bicol-u.edu.ph</strong>
+                    </div>
                 </div>
             </div>
         </div>
-    </footer>
+
+        <div class="contact-card">
+            <h3>Ready to join a class?</h3>
+            <p>Create your learner or volunteer profile to view upcoming Albay FSL sessions.</p>
+            <div class="contact-card-actions">
+                <a href="login.php?mode=register" class="btn-blush full-width">Register Now</a>
+                <a href="login.php?mode=login" class="btn-outline-light full-width">Sign In to Portal</a>
+            </div>
+        </div>
+    </div>
+</footer>
 <script>
     const signData = {
         love: {
