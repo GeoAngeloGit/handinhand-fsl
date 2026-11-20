@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 18, 2026 at 04:23 PM
+-- Generation Time: Nov 20, 2026 at 01:53 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -27,6 +27,7 @@ SET time_zone = "+00:00";
 -- Table structure for table `accounts`
 --
 
+DROP TABLE IF EXISTS `accounts`;
 CREATE TABLE `accounts` (
   `account_id` int(11) NOT NULL,
   `role_id` int(11) NOT NULL,
@@ -42,6 +43,7 @@ CREATE TABLE `accounts` (
 -- Table structure for table `administrators`
 --
 
+DROP TABLE IF EXISTS `administrators`;
 CREATE TABLE `administrators` (
   `admin_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
@@ -57,6 +59,7 @@ CREATE TABLE `administrators` (
 -- Table structure for table `barangays`
 --
 
+DROP TABLE IF EXISTS `barangays`;
 CREATE TABLE `barangays` (
   `barangay_id` int(11) NOT NULL,
   `municipality_id` int(11) NOT NULL,
@@ -795,16 +798,16 @@ INSERT INTO `barangays` (`barangay_id`, `municipality_id`, `barangay_name`) VALU
 -- Table structure for table `class`
 --
 
+DROP TABLE IF EXISTS `class`;
 CREATE TABLE `class` (
   `class_id` int(11) NOT NULL,
   `created_by` int(11) NOT NULL,
   `class_title` varchar(200) NOT NULL,
   `description` text DEFAULT NULL,
   `max_capacity` int(11) NOT NULL CHECK (`max_capacity` > 0),
-  `current_enrolled` int(11) NOT NULL DEFAULT 0 CHECK (`current_enrolled` >= 0),
+  `current_enrolled` int(11) NOT NULL DEFAULT 0 CHECK (`current_enrolled` >= 0 and `current_enrolled` <= `max_capacity`),
   `status` enum('Draft','Open','Ongoing','Completed','Cancelled') NOT NULL DEFAULT 'Open',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  CHECK (`current_enrolled` <= `max_capacity`)
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -813,11 +816,12 @@ CREATE TABLE `class` (
 -- Table structure for table `class_enrollments`
 --
 
+DROP TABLE IF EXISTS `class_enrollments`;
 CREATE TABLE `class_enrollments` (
   `enrollment_id` int(11) NOT NULL,
   `class_id` int(11) NOT NULL,
   `learner_id` int(11) NOT NULL,
-  `enrollment_date` date NOT NULL DEFAULT (curdate()),
+  `enrollment_date` date NOT NULL DEFAULT curdate(),
   `status` enum('enrolled','dropped','completed') NOT NULL DEFAULT 'enrolled'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -827,17 +831,17 @@ CREATE TABLE `class_enrollments` (
 -- Table structure for table `class_schedule`
 --
 
+DROP TABLE IF EXISTS `class_schedule`;
 CREATE TABLE `class_schedule` (
   `schedule_id` int(11) NOT NULL,
   `class_id` int(11) NOT NULL,
   `session_date` date NOT NULL,
   `start_time` time NOT NULL,
-  `end_time` time NOT NULL,
+  `end_time` time NOT NULL CHECK (`end_time` > `start_time`),
   `venue` varchar(255) DEFAULT NULL,
   `status` enum('scheduled','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
   `remarks` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  CHECK (`end_time` > `start_time`)
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -846,6 +850,7 @@ CREATE TABLE `class_schedule` (
 -- Table structure for table `class_teacher`
 --
 
+DROP TABLE IF EXISTS `class_teacher`;
 CREATE TABLE `class_teacher` (
   `class_id` int(11) NOT NULL,
   `teacher_id` int(11) NOT NULL,
@@ -859,6 +864,7 @@ CREATE TABLE `class_teacher` (
 -- Table structure for table `learners`
 --
 
+DROP TABLE IF EXISTS `learners`;
 CREATE TABLE `learners` (
   `learner_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
@@ -883,6 +889,7 @@ CREATE TABLE `learners` (
 -- Table structure for table `municipalities`
 --
 
+DROP TABLE IF EXISTS `municipalities`;
 CREATE TABLE `municipalities` (
   `municipality_id` int(11) NOT NULL,
   `municipality_name` varchar(100) NOT NULL,
@@ -919,6 +926,7 @@ INSERT INTO `municipalities` (`municipality_id`, `municipality_name`, `province`
 -- Table structure for table `post_class_report`
 --
 
+DROP TABLE IF EXISTS `post_class_report`;
 CREATE TABLE `post_class_report` (
   `report_id` int(11) NOT NULL,
   `schedule_id` int(11) NOT NULL,
@@ -934,6 +942,7 @@ CREATE TABLE `post_class_report` (
 -- Table structure for table `report_photos`
 --
 
+DROP TABLE IF EXISTS `report_photos`;
 CREATE TABLE `report_photos` (
   `photo_id` int(11) NOT NULL,
   `report_id` int(11) NOT NULL,
@@ -948,6 +957,7 @@ CREATE TABLE `report_photos` (
 -- Table structure for table `roles`
 --
 
+DROP TABLE IF EXISTS `roles`;
 CREATE TABLE `roles` (
   `role_id` int(11) NOT NULL,
   `role_name` varchar(50) NOT NULL
@@ -968,6 +978,7 @@ INSERT INTO `roles` (`role_id`, `role_name`) VALUES
 -- Table structure for table `session_attendance`
 --
 
+DROP TABLE IF EXISTS `session_attendance`;
 CREATE TABLE `session_attendance` (
   `attendance_id` int(11) NOT NULL,
   `report_id` int(11) NOT NULL,
@@ -983,6 +994,7 @@ CREATE TABLE `session_attendance` (
 -- Table structure for table `teachers`
 --
 
+DROP TABLE IF EXISTS `teachers`;
 CREATE TABLE `teachers` (
   `teacher_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
@@ -994,6 +1006,8 @@ CREATE TABLE `teachers` (
   `birthdate` date NOT NULL,
   `street_address` varchar(255) DEFAULT NULL,
   `contact_number` varchar(50) NOT NULL,
+  `specialization` varchar(150) NOT NULL,
+  `years_of_experience` int(11) UNSIGNED NOT NULL DEFAULT 0,
   `is_active` tinyint(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

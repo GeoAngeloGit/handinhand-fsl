@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../includes/db_connect.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: login.php');
@@ -19,7 +19,7 @@ if (($_SESSION['lockout_until'] ?? 0) > time()) {
 }
 
 $identifier = trim($_POST['login_identifier'] ?? '');
-$password   = $_POST['password'] ?? '';
+$password = $_POST['login_password'] ?? ($_POST['password'] ?? '');
 
 if ($identifier === '' || $password === '') {
     header('Location: login.php?error=invalid');
@@ -41,5 +41,5 @@ login_user($account);
 
 // Route: profile setup page if the role profile is missing, otherwise the dashboard
 $dest = post_login_destination($conn, (int)$account['account_id'], (int)$account['role_id']);
-header('Location: ' . $dest);
+header('Location: ../' . $dest);
 exit;

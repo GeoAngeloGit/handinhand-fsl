@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="learner.css">
+    <link rel="stylesheet" href="assets/css/learner.css">
 </head>
 <body>
 
@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <small>Signed in as</small>
                     <strong>@<?php echo htmlspecialchars($account_username); ?></strong>
                 </div>
-                <a href="login.php" class="btn-logout">Sign Out</a>
+                <a href="actions/logout.php" class="btn-logout">Sign Out</a>
             </div>
         </aside>
 
@@ -515,6 +515,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
-    <script src="learner.js"></script>
+    <script src="assets/js/learner.js"></script>
 </body>
 </html>

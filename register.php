@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/includes/db_connect.php';
 
 $pending = $_SESSION['pending_reg'] ?? null;
 $role = $_GET['role'] ?? ($pending['role'] ?? 'learner');
@@ -92,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $gender = trim($_POST['gender'] ?? '');
     $contact_number = trim($_POST['contact_number'] ?? '');
     $municipality_id = (int)($_POST['municipality_id'] ?? 0);
+    $specialization = trim($_POST['specialization'] ?? '');
+    $years_of_experience = (int)($_POST['years_of_experience'] ?? 0);
     $barangay_id = (int)($_POST['barangay_id'] ?? 0);
     $street_address = trim($_POST['street_address'] ?? '') ?: null;
 
@@ -117,6 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = "Please enter a valid birthdate.";
         } elseif (!$is_educator && (!in_array($hearing_status, $valid_hearing, true) || !in_array($speech_status, $valid_speech, true))) {
             $error_message = "Please select valid Hearing Status and Speech Status options.";
+        }  elseif ($is_educator && ($specialization === '' || $years_of_experience < 0)) {
+            $error_message = "Please enter your FSL specialization and valid years of experience.";
         } else {
             $profile_entry = [
                 'first_name' => $first_name,
@@ -130,7 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'street_address' => $street_address,
                 'hearing_status' => $hearing_status,
                 'speech_status' => $speech_status,
-                'accessibility_notes' => $accessibility_notes
+                'accessibility_notes' => $accessibility_notes,
+                'specialization'      => $specialization,
+                'years_of_experience' => $years_of_experience
             ];
 
             if ($action === 'add_another' && !$is_educator) {
@@ -159,8 +165,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $created_ids = [];
                 if ($is_educator) {
                     $p = $all_profiles[0];
-                    $stmt_prof = $conn->prepare("INSERT INTO teachers (account_id, barangay_id, first_name, middle_name, last_name, gender, birthdate, street_address, contact_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt_prof->bind_param("iisssssss", $account_id, $p['barangay_id'], $p['first_name'], $p['middle_name'], $p['last_name'], $p['gender'], $p['birthdate'], $p['street_address'], $p['contact_number']);
+                    $stmt_prof = $conn->prepare("INSERT INTO teachers (account_id, barangay_id, first_name, middle_name, last_name, gender, birthdate, street_address, contact_number, specialization, years_of_experience) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt_prof->bind_param("iissssssssi", $account_id, $p['barangay_id'], $p['first_name'], $p['middle_name'], $p['last_name'], $p['gender'], $p['birthdate'], $p['street_address'], $p['contact_number'], $p['specialization'], $p['years_of_experience']);
                     $stmt_prof->execute();
                     $created_ids[] = $conn->insert_id;
                 } else {
@@ -228,7 +234,7 @@ $account_email_display = $pending['email'] ?? 'juan.delacruz@gmail.com';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="register.css?v=4">
+    <link rel="stylesheet" href="assets/css/register.css?v=4">
 </head>
 <body>
 
@@ -482,6 +488,17 @@ $account_email_display = $pending['email'] ?? 'juan.delacruz@gmail.com';
                                 </button>
                             </div>
                         <?php else: ?>
+                            <hr class="row-divider">
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label for="specialization">FSL Specialization <span class="req">*</span></label>
+                                    <input type="text" id="specialization" name="specialization" maxlength="150" placeholder="e.g., Basic FSL, Deaf Education" required>
+                                </div>
+                                <div class="field">
+                                    <label for="years_of_experience">Years of Experience <span class="req">*</span></label>
+                                    <input type="number" id="years_of_experience" name="years_of_experience" min="0" max="60" value="0" required>
+                                </div>
+                            </div>
                             <button type="submit" class="btn-complete-maroon full-w">COMPLETE REGISTRATION</button>
                         <?php endif; ?>
                     </form>
