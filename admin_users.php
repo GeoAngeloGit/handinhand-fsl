@@ -86,56 +86,6 @@ if ($conn) {
     }
 }
 
-if (empty($accounts_list)) {
-    $count_total    = 18;
-    $count_learners = 11;
-    $count_teachers = 5;
-    $count_admins   = 2;
-
-    $accounts_list = [
-        [
-            'raw_id'       => 18,
-            'account_code' => 'ACC-2026-018',
-            'role_code'    => 'ROLE-ADM',
-            'username'     => '@albay.coordinator',
-            'email'        => 'coordinator@handinhand.ph',
-            'created_at'   => '2026-11-21'
-        ],
-        [
-            'raw_id'       => 20,
-            'account_code' => 'ACC-2026-020',
-            'role_code'    => 'ROLE-LRN',
-            'username'     => '@june.devera',
-            'email'        => 'june.devera@handinhand.ph',
-            'created_at'   => '2026-11-21'
-        ],
-        [
-            'raw_id'       => 21,
-            'account_code' => 'ACC-2026-021',
-            'role_code'    => 'ROLE-ADM',
-            'username'     => '@daraga.coordinator',
-            'email'        => 'daraga.admin@handinhand.ph',
-            'created_at'   => '2026-11-19'
-        ],
-        [
-            'raw_id'       => 22,
-            'account_code' => 'ACC-2026-022',
-            'role_code'    => 'ROLE-TCH',
-            'username'     => '@elena.reyes',
-            'email'        => 'elena.reyes@handinhand.ph',
-            'created_at'   => '2026-11-18'
-        ],
-        [
-            'raw_id'       => 23,
-            'account_code' => 'ACC-2026-023',
-            'role_code'    => 'ROLE-LRN',
-            'username'     => '@carlo.mendoza',
-            'email'        => 'carlo.mendoza@handinhand.ph',
-            'created_at'   => '2026-11-17'
-        ]
-    ];
-}
-
 $displayed_total = count($accounts_list);
 ?>
 <!DOCTYPE html>
