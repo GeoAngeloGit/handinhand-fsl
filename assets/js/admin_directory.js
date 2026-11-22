@@ -38,7 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortMode = sortSelect ? sortSelect.value : 'id-asc';
         const cards = Array.from(stack.querySelectorAll('.dir-row-card'));
 
-        // Sort cards
+        if (cards.length === 0) {
+            if (emptyStateEl) emptyStateEl.style.display = 'none';
+            return;
+        }
+
         cards.sort((a, b) => {
             if (sortMode === 'id-asc') return (a.dataset.code || '').localeCompare(b.dataset.code || '');
             if (sortMode === 'id-desc') return (b.dataset.code || '').localeCompare(a.dataset.code || '');
@@ -48,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         cards.forEach(c => stack.appendChild(c));
 
-        // Filter cards
         let visibleCount = 0;
         cards.forEach(card => {
             const code = card.dataset.code || '';
@@ -89,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Show "+ New Admin Account" button only on Admins tab
             if (newAdminBtn) {
                 newAdminBtn.style.display = (activeTab === 'admins') ? 'inline-flex' : 'none';
             }
@@ -141,8 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             row.appendChild(labelEl);
 
-            // Keep ID and Class counts read-only even in edit mode
-            const readOnlyField = idx === 0 || field.label.includes('Classes');
+            const readOnlyField = idx === 0 || field.label === 'Enrolled Classes' || field.label === 'Date Added';
             if (editable && !readOnlyField) {
                 const input = document.createElement('input');
                 input.type = 'text';
@@ -162,17 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function openProfileModal(card) {
-
-        const isBerryTheme = currentDataRef.type === 'teacher' || currentDataRef.type === 'admin';
-        if (modalInitials) {
-            modalInitials.textContent = currentDataRef.initials || 'US';
-            modalInitials.classList.toggle('theme-berry', isBerryTheme);
-        }
-        if (modalCodeLine) {
-            modalCodeLine.textContent = `${currentDataRef.code} • ACCOUNT ${currentDataRef.account_code}`;
-            modalCodeLine.parentElement.classList.toggle('theme-berry', isBerryTheme);
-        }
-        
         if (!profileModal) return;
         const rawJson = card.dataset.modal;
         if (!rawJson) return;
@@ -181,8 +171,17 @@ document.addEventListener('DOMContentLoaded', () => {
         currentDataRef = JSON.parse(rawJson);
         isEditMode = false;
 
-        if (modalInitials) modalInitials.textContent = currentDataRef.initials || 'US';
-        if (modalCodeLine) modalCodeLine.textContent = `${currentDataRef.code} • ACCOUNT ${currentDataRef.account_code}`;
+        const isBerryTheme = currentDataRef.type === 'teacher' || currentDataRef.type === 'admin';
+        if (modalInitials) {
+            modalInitials.textContent = currentDataRef.initials || 'US';
+            modalInitials.classList.toggle('theme-berry', isBerryTheme);
+        }
+        if (modalCodeLine) {
+            modalCodeLine.textContent = `${currentDataRef.code} • ACCOUNT ${currentDataRef.account_code}`;
+            if (modalCodeLine.parentElement) {
+                modalCodeLine.parentElement.classList.toggle('theme-berry', isBerryTheme);
+            }
+        }
         if (modalProfileName) modalProfileName.textContent = currentDataRef.full_name;
 
         const isActive = currentDataRef.status === 'Active';
@@ -191,7 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
             modalStatusBadge.innerHTML = `&bull; ${currentDataRef.status}`;
         }
 
-        // Show "Delete User" button ONLY on Inactive profiles (matching Figma)
         if (modalDeleteBtn) {
             modalDeleteBtn.style.display = isActive ? 'none' : 'inline-flex';
         }
@@ -214,6 +212,17 @@ document.addEventListener('DOMContentLoaded', () => {
         card.addEventListener('click', () => openProfileModal(card));
     });
 
+    const sidebarCoordCard = document.getElementById('sidebarCoordCard');
+    if (sidebarCoordCard) {
+        sidebarCoordCard.addEventListener('click', (e) => {
+            if (e.target.closest('.logout-link')) return;
+            const myAdminRow = document.querySelector('#panel-admins .dir-row-card');
+            if (myAdminRow) {
+                openProfileModal(myAdminRow);
+            }
+        });
+    }
+
     if (closeProfileBtn) closeProfileBtn.addEventListener('click', closeProfileModal);
     if (cancelProfileBtn) cancelProfileBtn.addEventListener('click', closeProfileModal);
     if (profileModal) {
@@ -222,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Toggle Edit Profile <-> Save Changes
     if (modalEditSaveBtn) {
         modalEditSaveBtn.addEventListener('click', () => {
             if (!currentDataRef) return;
@@ -252,7 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Delete User (Inactive profiles)
     if (modalDeleteBtn) {
         modalDeleteBtn.addEventListener('click', () => {
             if (!currentDataRef || !currentCardRef) return;

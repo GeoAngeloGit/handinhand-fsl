@@ -15,15 +15,25 @@ $current_account_id = (int)($_SESSION['account_id'] ?? 0);
 $coordinator_name   = 'Albay Coordinator';
 $coordinator_hub    = 'Legazpi Hub';
 
-if ($current_account_id > 0 && isset($conn) && $conn instanceof mysqli) {
+if (isset($conn) && $conn instanceof mysqli) {
     try {
-        $stmt = $conn->prepare("SELECT first_name, last_name FROM administrators WHERE account_id = ? LIMIT 1");
-        $stmt->bind_param('i', $current_account_id);
-        $stmt->execute();
-        if ($adm = $stmt->get_result()->fetch_assoc()) {
+        if ($current_account_id > 0) {
+            $stmt = $conn->prepare("SELECT first_name, last_name FROM administrators WHERE account_id = ? LIMIT 1");
+            $stmt->bind_param('i', $current_account_id);
+            $stmt->execute();
+            $adm = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+        } else {
+            $res = $conn->query("SELECT account_id, first_name, last_name FROM administrators ORDER BY admin_id ASC LIMIT 1");
+            $adm = $res ? $res->fetch_assoc() : null;
+            if (!empty($adm['account_id'])) {
+                $current_account_id = (int)$adm['account_id'];
+            }
+        }
+
+        if (!empty($adm)) {
             $coordinator_name = trim(($adm['first_name'] ?? '') . ' ' . ($adm['last_name'] ?? '')) ?: $coordinator_name;
         }
-        $stmt->close();
     } catch (Throwable $e) {
         // Keep defaults
     }
@@ -38,7 +48,7 @@ $teachers_list = [];
 $admins_list   = [];
 
 if (isset($conn) && $conn instanceof mysqli) {
-    // 1. Learners (Matches actual schema: speech_status, barangay_id, account_status)
+    // 1. Learners
     try {
         $sql_lrn = "
             SELECT 
@@ -46,13 +56,9 @@ if (isset($conn) && $conn instanceof mysqli) {
                 a.email,
                 a.username,
                 a.created_at,
-                YEAR(a.created_at) AS acc_year,
-                b.barangay_name,
-                m.municipality_name
+                YEAR(a.created_at) AS acc_year
             FROM learners l
             JOIN accounts a ON a.account_id = l.account_id
-            LEFT JOIN barangays b ON b.barangay_id = l.barangay_id
-            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY l.learner_id ASC
         ";
         if ($res = $conn->query($sql_lrn)) {
@@ -65,14 +71,8 @@ if (isset($conn) && $conn instanceof mysqli) {
 
                 $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
                 $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+                $loc        = !empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Albay';
 
-                $loc_parts = array_filter([
-                    $r['barangay_name'] ?? ($r['barangay'] ?? ''),
-                    $r['municipality_name'] ?? ($r['municipality'] ?? '')
-                ]);
-                $loc = !empty($loc_parts) ? implode(', ', $loc_parts) : (!empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Albay');
-
-                // Count active enrollments safely
                 $class_count = 0;
                 try {
                     if ($ec = $conn->query("SELECT COUNT(*) AS cnt FROM enrollments WHERE learner_id = {$lid}")) {
@@ -109,13 +109,9 @@ if (isset($conn) && $conn instanceof mysqli) {
                 a.email,
                 a.username,
                 a.created_at,
-                YEAR(a.created_at) AS acc_year,
-                b.barangay_name,
-                m.municipality_name
+                YEAR(a.created_at) AS acc_year
             FROM teachers t
             JOIN accounts a ON a.account_id = t.account_id
-            LEFT JOIN barangays b ON b.barangay_id = t.barangay_id
-            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY t.teacher_id ASC
         ";
         if ($res = $conn->query($sql_tch)) {
@@ -128,12 +124,6 @@ if (isset($conn) && $conn instanceof mysqli) {
 
                 $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
                 $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
-
-                $loc_parts = array_filter([
-                    $r['barangay_name'] ?? ($r['barangay'] ?? ''),
-                    $r['municipality_name'] ?? ($r['municipality'] ?? '')
-                ]);
-                $loc = !empty($loc_parts) ? implode(', ', $loc_parts) : 'Albay';
 
                 $class_count = 0;
                 try {
@@ -151,7 +141,6 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'initials'       => strtoupper(substr((string)($r['first_name'] ?? 'T'), 0, 1) . substr((string)($r['last_name'] ?? 'H'), 0, 1)),
                     'specialization' => $r['specialization'] ?: 'General FSL Instruction',
                     'experience'     => (int)($r['years_experience'] ?? 0),
-                    'location'       => $loc,
                     'contact'        => $r['contact_number'] ?: '—',
                     'email'          => $r['email'] ?? '—',
                     'classes_count'  => $class_count,
@@ -190,6 +179,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $raw_user  = (string)($r['username'] ?? '');
                 $uname     = $raw_user !== '' ? (str_starts_with($raw_user, '@') ? $raw_user : '@' . $raw_user) : '—';
                 $date_add  = !empty($r['created_at']) ? date('M j, Y', strtotime((string)$r['created_at'])) : '—';
+                $loc       = $r['location'] ?? ($r['hub_assignment'] ?? (!empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Rawis, Legazpi City'));
 
                 $admins_list[] = [
                     'raw_id'       => $aid,
@@ -199,9 +189,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'full_name'    => $full_name,
                     'initials'     => strtoupper(substr((string)($r['first_name'] ?? 'A'), 0, 1) . substr((string)($r['last_name'] ?? 'D'), 0, 1)),
                     'username'     => $uname,
+                    'location'     => $loc,
                     'email'        => $r['email'] ?? '—',
-                    'hub'          => $r['hub_assignment'] ?? 'Legazpi City Hub',
-                    'contact'      => $r['contact_number'] ?? '—',
                     'date_added'   => $date_add,
                     'status'       => $status,
                     'is_you'       => ($current_account_id > 0 && (int)$r['account_id'] === $current_account_id),
@@ -241,7 +230,7 @@ function count_active_inactive(array $rows): array {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/admin.css?v=4">
+    <link rel="stylesheet" href="assets/css/admin.css?v=5">
 </head>
 <body>
 
@@ -308,7 +297,7 @@ function count_active_inactive(array $rows): array {
 
         <!-- Bottom Coordinator Profile Card -->
         <div class="sidebar-footer">
-            <div class="coordinator-card">
+            <div class="coordinator-card" id="sidebarCoordCard" style="cursor: pointer;" title="View Profile Details">
                 <div class="coord-avatar"><?php echo htmlspecialchars($initials); ?></div>
                 <div class="coord-info">
                     <strong><?php echo htmlspecialchars($coordinator_name); ?></strong>
@@ -498,21 +487,20 @@ function count_active_inactive(array $rows): array {
                             $is_active = ($tch['status'] === 'Active');
                             $modal_payload = htmlspecialchars(json_encode([
                                 'type'         => 'teacher',
-                                'id_label'     => 'Educator ID',
+                                'id_label'     => 'Teacher ID',
                                 'code'         => $tch['code'],
                                 'account_code' => $tch['account_code'],
                                 'initials'     => $tch['initials'],
                                 'full_name'    => $tch['full_name'],
                                 'status'       => $tch['status'],
                                 'fields'       => [
-                                    ['label' => 'Educator ID',         'value' => $tch['code']],
+                                    ['label' => 'Teacher ID',          'value' => $tch['code']],
                                     ['label' => 'Full Name',           'value' => $tch['full_name']],
                                     ['label' => 'FSL Specialization',  'value' => $tch['specialization']],
-                                    ['label' => 'Location',            'value' => $tch['location']],
                                     ['label' => 'Years of Experience', 'value' => $tch['experience'] . ' years'],
                                     ['label' => 'Email',               'value' => $tch['email']],
                                     ['label' => 'Contact Number',      'value' => $tch['contact']],
-                                    ['label' => 'Enrolled Classes',    'value' => $tch['classes_count'] . ' Classes'],
+                                    ['label' => 'Enrolled Classes',    'value' => $tch['classes_count'] . ' Active'],
                                 ]
                             ]), ENT_QUOTES, 'UTF-8');
                         ?>
@@ -579,20 +567,19 @@ function count_active_inactive(array $rows): array {
                             $is_active = ($adm['status'] === 'Active');
                             $modal_payload = htmlspecialchars(json_encode([
                                 'type'         => 'admin',
-                                'id_label'     => 'Administrator ID',
+                                'id_label'     => 'Admin ID',
                                 'code'         => $adm['code'],
                                 'account_code' => $adm['account_code'],
                                 'initials'     => $adm['initials'],
                                 'full_name'    => $adm['full_name'],
                                 'status'       => $adm['status'],
                                 'fields'       => [
-                                    ['label' => 'Administrator ID', 'value' => $adm['code']],
-                                    ['label' => 'Full Name',        'value' => $adm['full_name']],
-                                    ['label' => 'Username',         'value' => $adm['username']],
-                                    ['label' => 'Assigned Hub',     'value' => $adm['hub']],
-                                    ['label' => 'Contact Number',   'value' => $adm['contact']],
-                                    ['label' => 'Email',            'value' => $adm['email']],
-                                    ['label' => 'Date Added',       'value' => $adm['date_added']],
+                                    ['label' => 'Admin ID',   'value' => $adm['code']],
+                                    ['label' => 'Full Name',  'value' => $adm['full_name']],
+                                    ['label' => 'Username',   'value' => $adm['username']],
+                                    ['label' => 'Location',   'value' => $adm['location']],
+                                    ['label' => 'Email',      'value' => $adm['email']],
+                                    ['label' => 'Date Added', 'value' => $adm['date_added']],
                                 ]
                             ]), ENT_QUOTES, 'UTF-8');
                         ?>
@@ -688,7 +675,7 @@ function count_active_inactive(array $rows): array {
     <div class="dir-modal-card" role="dialog" aria-modal="true" aria-labelledby="newAdminModalTitle">
         <div class="dir-modal-header">
             <div class="modal-identity-left">
-                <div class="modal-initials-circle" style="background-color: #EFE5E8; color: var(--maroon-deep);">+</div>
+                <div class="modal-initials-circle theme-berry">+</div>
                 <div class="modal-meta-block">
                     <span class="portal-eyebrow" style="margin-bottom: 2px;">ADMINISTRATION PORTAL &bull; NEW RECORD</span>
                     <h2 class="modal-fullname" id="newAdminModalTitle">New Admin Account</h2>
@@ -716,13 +703,13 @@ function count_active_inactive(array $rows): array {
                     <input type="email" id="naEmail" name="email" placeholder="e.g., tabaco.admin@handinhand.ph" required>
                 </div>
                 <div class="na-field">
-                    <label for="naHub">ASSIGNED HUB</label>
+                    <label for="naHub">LOCATION / HUB</label>
                     <select id="naHub" name="hub_assignment">
-                        <option value="Legazpi City Hub">Legazpi City Hub</option>
-                        <option value="Daraga Municipal Hub">Daraga Municipal Hub</option>
-                        <option value="Tabaco North Hub">Tabaco North Hub</option>
-                        <option value="Ligao West Hub">Ligao West Hub</option>
-                        <option value="Polangui Hub">Polangui Hub</option>
+                        <option value="Rawis, Legazpi City">Rawis, Legazpi City</option>
+                        <option value="Sagpon, Daraga">Sagpon, Daraga</option>
+                        <option value="San Lorenzo, Tabaco City">San Lorenzo, Tabaco City</option>
+                        <option value="Centro, Ligao City">Centro, Ligao City</option>
+                        <option value="Centro Oriental, Polangui">Centro Oriental, Polangui</option>
                     </select>
                 </div>
                 <div class="na-field">
@@ -742,7 +729,7 @@ function count_active_inactive(array $rows): array {
     </div>
 </div>
 
-<script src="assets/js/admin_directory.js?v=1"></script>
+<script src="assets/js/admin_directory.js?v=2"></script>
 
 </body>
 </html>
