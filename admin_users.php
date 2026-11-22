@@ -2,15 +2,7 @@
 
 declare(strict_types=1);
 
-if (file_exists(__DIR__ . '/db_connect.php')) {
-    require_once __DIR__ . '/db_connect.php';
-} elseif (file_exists(__DIR__ . '/database/db_connect.php')) {
-    require_once __DIR__ . '/database/db_connect.php';
-} elseif (file_exists(__DIR__ . '/db.php')) {
-    require_once __DIR__ . '/db.php';
-} else {
-    $conn = null;
-}
+require_once __DIR__ . '/includes/db_connect.php';
 
 if (!defined('ROLE_ADMIN')) {
     define('ROLE_ADMIN', 1);
