@@ -17,18 +17,15 @@ $coordinator_hub    = 'Legazpi Hub';
 
 if ($current_account_id > 0 && isset($conn) && $conn instanceof mysqli) {
     try {
-        $stmt = $conn->prepare("SELECT first_name, last_name, hub_assignment FROM administrators WHERE account_id = ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT first_name, last_name FROM administrators WHERE account_id = ? LIMIT 1");
         $stmt->bind_param('i', $current_account_id);
         $stmt->execute();
         if ($adm = $stmt->get_result()->fetch_assoc()) {
             $coordinator_name = trim(($adm['first_name'] ?? '') . ' ' . ($adm['last_name'] ?? '')) ?: $coordinator_name;
-            if (!empty($adm['hub_assignment'])) {
-                $coordinator_hub = $adm['hub_assignment'];
-            }
         }
         $stmt->close();
     } catch (Throwable $e) {
-        // Keep session header defaults
+        // Keep defaults
     }
 }
 
@@ -41,50 +38,61 @@ $teachers_list = [];
 $admins_list   = [];
 
 if (isset($conn) && $conn instanceof mysqli) {
-    // 1. Learners
+    // 1. Learners (Matches actual schema: speech_status, barangay_id, account_status)
     try {
         $sql_lrn = "
             SELECT 
-                l.learner_id,
-                l.account_id,
-                l.first_name,
-                l.middle_name,
-                l.last_name,
-                l.hearing_status,
-                l.communication_mode,
-                l.barangay,
-                l.municipality,
-                l.contact_number,
+                l.*,
                 a.email,
-                a.status,
+                a.username,
+                a.created_at,
                 YEAR(a.created_at) AS acc_year,
-                (SELECT COUNT(*) FROM enrollments e WHERE e.learner_id = l.learner_id) AS class_count
+                b.barangay_name,
+                m.municipality_name
             FROM learners l
             JOIN accounts a ON a.account_id = l.account_id
+            LEFT JOIN barangays b ON b.barangay_id = l.barangay_id
+            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY l.learner_id ASC
         ";
         if ($res = $conn->query($sql_lrn)) {
             while ($r = $res->fetch_assoc()) {
+                $lid = (int)$r['learner_id'];
                 $mid = !empty($r['middle_name']) ? ' ' . strtoupper(substr(trim((string)$r['middle_name']), 0, 1)) . '.' : '';
                 $full_name = trim(($r['last_name'] ?? '') . ', ' . ($r['first_name'] ?? '') . $mid);
-                $lrn_code  = sprintf('LRN-%05d', (int)$r['learner_id']);
+                $lrn_code  = sprintf('LRN-%05d', $lid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
-                $status    = (strtolower((string)($r['status'] ?? 'active')) === 'inactive') ? 'Inactive' : 'Active';
-                $loc       = trim(($r['barangay'] ?? '') . ', ' . ($r['municipality'] ?? ''), ', ') ?: '—';
+
+                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
+                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+
+                $loc_parts = array_filter([
+                    $r['barangay_name'] ?? ($r['barangay'] ?? ''),
+                    $r['municipality_name'] ?? ($r['municipality'] ?? '')
+                ]);
+                $loc = !empty($loc_parts) ? implode(', ', $loc_parts) : (!empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Albay');
+
+                // Count active enrollments safely
+                $class_count = 0;
+                try {
+                    if ($ec = $conn->query("SELECT COUNT(*) AS cnt FROM enrollments WHERE learner_id = {$lid}")) {
+                        $class_count = (int)($ec->fetch_assoc()['cnt'] ?? 0);
+                    }
+                } catch (Throwable $ignore) {}
 
                 $learners_list[] = [
-                    'raw_id'        => (int)$r['learner_id'],
+                    'raw_id'        => $lid,
                     'account_id'    => (int)$r['account_id'],
                     'code'          => $lrn_code,
                     'account_code'  => $acc_code,
                     'full_name'     => $full_name,
                     'initials'      => strtoupper(substr((string)($r['first_name'] ?? 'L'), 0, 1) . substr((string)($r['last_name'] ?? 'N'), 0, 1)),
                     'hearing'       => $r['hearing_status'] ?: 'Unspecified',
-                    'speech'        => $r['communication_mode'] ?: 'Unspecified',
+                    'speech'        => $r['speech_status'] ?? ($r['communication_mode'] ?? 'Unspecified'),
                     'location'      => $loc,
                     'contact'       => $r['contact_number'] ?: '—',
                     'email'         => $r['email'] ?? '—',
-                    'classes_count' => (int)$r['class_count'],
+                    'classes_count' => $class_count,
                     'status'        => $status,
                 ];
             }
@@ -97,35 +105,45 @@ if (isset($conn) && $conn instanceof mysqli) {
     try {
         $sql_tch = "
             SELECT 
-                t.teacher_id,
-                t.account_id,
-                t.first_name,
-                t.middle_name,
-                t.last_name,
-                t.specialization,
-                t.years_experience,
-                t.barangay,
-                t.municipality,
-                t.contact_number,
+                t.*,
                 a.email,
-                a.status,
+                a.username,
+                a.created_at,
                 YEAR(a.created_at) AS acc_year,
-                (SELECT COUNT(*) FROM classes c WHERE c.teacher_id = t.teacher_id) AS class_count
+                b.barangay_name,
+                m.municipality_name
             FROM teachers t
             JOIN accounts a ON a.account_id = t.account_id
+            LEFT JOIN barangays b ON b.barangay_id = t.barangay_id
+            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY t.teacher_id ASC
         ";
         if ($res = $conn->query($sql_tch)) {
             while ($r = $res->fetch_assoc()) {
+                $tid = (int)$r['teacher_id'];
                 $mid = !empty($r['middle_name']) ? ' ' . strtoupper(substr(trim((string)$r['middle_name']), 0, 1)) . '.' : '';
                 $full_name = trim(($r['last_name'] ?? '') . ', ' . ($r['first_name'] ?? '') . $mid);
-                $tch_code  = sprintf('TCH-%05d', (int)$r['teacher_id']);
+                $tch_code  = sprintf('TCH-%05d', $tid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
-                $status    = (strtolower((string)($r['status'] ?? 'active')) === 'inactive') ? 'Inactive' : 'Active';
-                $loc       = trim(($r['barangay'] ?? '') . ', ' . ($r['municipality'] ?? ''), ', ') ?: '—';
+
+                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
+                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+
+                $loc_parts = array_filter([
+                    $r['barangay_name'] ?? ($r['barangay'] ?? ''),
+                    $r['municipality_name'] ?? ($r['municipality'] ?? '')
+                ]);
+                $loc = !empty($loc_parts) ? implode(', ', $loc_parts) : 'Albay';
+
+                $class_count = 0;
+                try {
+                    if ($cc = $conn->query("SELECT COUNT(*) AS cnt FROM classes WHERE teacher_id = {$tid}")) {
+                        $class_count = (int)($cc->fetch_assoc()['cnt'] ?? 0);
+                    }
+                } catch (Throwable $ignore) {}
 
                 $teachers_list[] = [
-                    'raw_id'         => (int)$r['teacher_id'],
+                    'raw_id'         => $tid,
                     'account_id'     => (int)$r['account_id'],
                     'code'           => $tch_code,
                     'account_code'   => $acc_code,
@@ -136,7 +154,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'location'       => $loc,
                     'contact'        => $r['contact_number'] ?: '—',
                     'email'          => $r['email'] ?? '—',
-                    'classes_count'  => (int)$r['class_count'],
+                    'classes_count'  => $class_count,
                     'status'         => $status,
                 ];
             }
@@ -149,16 +167,9 @@ if (isset($conn) && $conn instanceof mysqli) {
     try {
         $sql_adm = "
             SELECT 
-                adm.admin_id,
-                adm.account_id,
-                adm.first_name,
-                adm.middle_name,
-                adm.last_name,
-                adm.hub_assignment,
-                adm.contact_number,
+                adm.*,
                 a.username,
                 a.email,
-                a.status,
                 a.created_at,
                 YEAR(a.created_at) AS acc_year
             FROM administrators adm
@@ -167,17 +178,21 @@ if (isset($conn) && $conn instanceof mysqli) {
         ";
         if ($res = $conn->query($sql_adm)) {
             while ($r = $res->fetch_assoc()) {
+                $aid = (int)$r['admin_id'];
                 $mid = !empty($r['middle_name']) ? ' ' . strtoupper(substr(trim((string)$r['middle_name']), 0, 1)) . '.' : '';
                 $full_name = trim(($r['last_name'] ?? '') . ', ' . ($r['first_name'] ?? '') . $mid);
-                $adm_code  = sprintf('ADM-%05d', (int)$r['admin_id']);
+                $adm_code  = sprintf('ADM-%05d', $aid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
-                $status    = (strtolower((string)($r['status'] ?? 'active')) === 'inactive') ? 'Inactive' : 'Active';
+
+                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
+                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+
                 $raw_user  = (string)($r['username'] ?? '');
                 $uname     = $raw_user !== '' ? (str_starts_with($raw_user, '@') ? $raw_user : '@' . $raw_user) : '—';
                 $date_add  = !empty($r['created_at']) ? date('M j, Y', strtotime((string)$r['created_at'])) : '—';
 
                 $admins_list[] = [
-                    'raw_id'       => (int)$r['admin_id'],
+                    'raw_id'       => $aid,
                     'account_id'   => (int)$r['account_id'],
                     'code'         => $adm_code,
                     'account_code' => $acc_code,
@@ -185,8 +200,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'initials'     => strtoupper(substr((string)($r['first_name'] ?? 'A'), 0, 1) . substr((string)($r['last_name'] ?? 'D'), 0, 1)),
                     'username'     => $uname,
                     'email'        => $r['email'] ?? '—',
-                    'hub'          => $r['hub_assignment'] ?: '—',
-                    'contact'      => $r['contact_number'] ?: '—',
+                    'hub'          => $r['hub_assignment'] ?? 'Legazpi City Hub',
+                    'contact'      => $r['contact_number'] ?? '—',
                     'date_added'   => $date_add,
                     'status'       => $status,
                     'is_you'       => ($current_account_id > 0 && (int)$r['account_id'] === $current_account_id),
@@ -315,7 +330,7 @@ function count_active_inactive(array $rows): array {
             <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Menu">&#9776;</button>
         </header>
 
-        <!-- Unified Top Control Card (Tabs + Sub-header + Search/Sort/Status) -->
+        <!-- Unified Top Control Card -->
         <section class="dir-control-card">
             <div class="dir-tabs-bar">
                 <div class="dir-segmented-tabs" role="tablist">
@@ -335,7 +350,6 @@ function count_active_inactive(array $rows): array {
                     </button>
                 </div>
 
-                <!-- Shown only when Admins tab is active -->
                 <button type="button" class="btn-new-admin" id="openNewAdminModalBtn" style="display: none;">
                     <span>+</span> New Admin Account
                 </button>

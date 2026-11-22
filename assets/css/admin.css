@@ -1362,7 +1362,9 @@ body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 16px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
 }
 
 .modal-identity-left {
@@ -1384,6 +1386,11 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+.modal-initials-circle.theme-berry {
+    background-color: #EFE5E8;
+    color: var(--maroon-deep);
 }
 
 .modal-top-codes {
@@ -1426,11 +1433,17 @@ body {
     background-color: var(--berry-soft-bg);
 }
 
+.modal-top-codes.theme-berry {
+    color: var(--berry-accent);
+}
+
 .modal-fields-stack {
     display: flex;
     flex-direction: column;
     gap: 7px;
-    margin-bottom: 18px;
+    padding-bottom: 16px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
 }
 
 .modal-field-row {

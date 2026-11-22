@@ -162,6 +162,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function openProfileModal(card) {
+
+        const isBerryTheme = currentDataRef.type === 'teacher' || currentDataRef.type === 'admin';
+        if (modalInitials) {
+            modalInitials.textContent = currentDataRef.initials || 'US';
+            modalInitials.classList.toggle('theme-berry', isBerryTheme);
+        }
+        if (modalCodeLine) {
+            modalCodeLine.textContent = `${currentDataRef.code} • ACCOUNT ${currentDataRef.account_code}`;
+            modalCodeLine.parentElement.classList.toggle('theme-berry', isBerryTheme);
+        }
+        
         if (!profileModal) return;
         const rawJson = card.dataset.modal;
         if (!rawJson) return;
