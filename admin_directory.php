@@ -222,6 +222,7 @@ function count_active_inactive(array $rows): array {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Directory | HandInHand FSL</title>
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES); ?>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -682,6 +683,7 @@ function count_active_inactive(array $rows): array {
         </div>
 
         <form id="newAdminForm" action="actions/admin_create_admin.php" method="POST">
+            <?php echo csrf_field(); ?>
             <div class="new-admin-grid">
                 <div class="na-field">
                     <label for="naFirstName">FIRST NAME</label>

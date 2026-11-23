@@ -238,27 +238,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 isEditMode = true;
                 if (modalEditBtnLabel) modalEditBtnLabel.textContent = 'Save Changes';
                 renderModalFields(currentDataRef, true);
-            } else {
-                const inputs = modalFieldsStack.querySelectorAll('.modal-field-input');
-                inputs.forEach(inp => {
-                    const idx = parseInt(inp.dataset.fieldIndex || '-1', 10);
-                    if (idx >= 0 && currentDataRef.fields[idx]) {
-                        currentDataRef.fields[idx].value = inp.value.trim() || currentDataRef.fields[idx].value;
-                        if (currentDataRef.fields[idx].label === 'Full Name') {
-                            currentDataRef.full_name = currentDataRef.fields[idx].value;
-                            if (modalProfileName) modalProfileName.textContent = currentDataRef.full_name;
-                        }
-                    }
-                });
-                if (currentCardRef) {
-                    currentCardRef.dataset.modal = JSON.stringify(currentDataRef);
+                    } else {
+            const inputs = modalFieldsStack.querySelectorAll('.modal-field-input');
+            inputs.forEach(inp => {
+                const idx = parseInt(inp.dataset.fieldIndex || '-1', 10);
+                if (idx >= 0 && currentDataRef.fields[idx]) {
+                    currentDataRef.fields[idx].value = inp.value.trim() || currentDataRef.fields[idx].value;
                 }
-                isEditMode = false;
-                if (modalEditBtnLabel) modalEditBtnLabel.textContent = 'Edit Profile';
-                renderModalFields(currentDataRef, false);
-            }
-        });
-    }
+            });
+
+            const fields = {};
+            currentDataRef.fields.forEach(f => { fields[f.label] = f.value; });
+
+            const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+            modalEditSaveBtn.disabled = true;
+
+            fetch('actions/admin_update_profile.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    csrf_token: tokenMeta ? tokenMeta.content : '',
+                    type: currentDataRef.type,
+                    code: currentDataRef.code,
+                    fields: fields
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert(res.message || 'Could not save changes.');
+                    modalEditSaveBtn.disabled = false;
+                }
+            })
+            .catch(() => {
+                alert('Network error. Please try again.');
+                modalEditSaveBtn.disabled = false;
+                    });
+                }
+            });
+        }
 
     if (modalDeleteBtn) {
         modalDeleteBtn.addEventListener('click', () => {
