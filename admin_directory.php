@@ -56,9 +56,14 @@ if (isset($conn) && $conn instanceof mysqli) {
                 a.email,
                 a.username,
                 a.created_at,
-                YEAR(a.created_at) AS acc_year
+                YEAR(a.created_at) AS acc_year,
+                b.barangay_name,
+                m.municipality_name,
+                (SELECT COUNT(*) FROM class_enrollments ce WHERE ce.learner_id = l.learner_id) AS class_count
             FROM learners l
             JOIN accounts a ON a.account_id = l.account_id
+            LEFT JOIN barangays b ON b.barangay_id = l.barangay_id
+            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY l.learner_id ASC
         ";
         if ($res = $conn->query($sql_lrn)) {
@@ -71,14 +76,10 @@ if (isset($conn) && $conn instanceof mysqli) {
 
                 $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
                 $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
-                $loc        = !empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Albay';
 
-                $class_count = 0;
-                try {
-                    if ($ec = $conn->query("SELECT COUNT(*) AS cnt FROM enrollments WHERE learner_id = {$lid}")) {
-                        $class_count = (int)($ec->fetch_assoc()['cnt'] ?? 0);
-                    }
-                } catch (Throwable $ignore) {}
+                $brgy = $r['barangay_name'] ?? '';
+                $muni = $r['municipality_name'] ?? '';
+                $loc  = trim($brgy . ($brgy && $muni ? ', ' : '') . $muni) ?: 'Albay';
 
                 $learners_list[] = [
                     'raw_id'        => $lid,
@@ -87,17 +88,18 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'account_code'  => $acc_code,
                     'full_name'     => $full_name,
                     'initials'      => strtoupper(substr((string)($r['first_name'] ?? 'L'), 0, 1) . substr((string)($r['last_name'] ?? 'N'), 0, 1)),
-                    'hearing'       => $r['hearing_status'] ?: 'Unspecified',
-                    'speech'        => $r['speech_status'] ?? ($r['communication_mode'] ?? 'Unspecified'),
+                    'hearing'       => $r['hearing_status'] ?? 'Unspecified',
+                    'speech'        => $r['speaking_status'] ?? ($r['speech_status'] ?? 'Unspecified'),
                     'location'      => $loc,
-                    'contact'       => $r['contact_number'] ?: '—',
+                    'contact'       => $r['contact_number'] ?? '—',
                     'email'         => $r['email'] ?? '—',
-                    'classes_count' => $class_count,
+                    'classes_count' => (int)($r['class_count'] ?? 0),
                     'status'        => $status,
                 ];
             }
         }
     } catch (Throwable $e) {
+        error_log("Learners query error: " . $e->getMessage());
         $learners_list = [];
     }
 
@@ -109,7 +111,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                 a.email,
                 a.username,
                 a.created_at,
-                YEAR(a.created_at) AS acc_year
+                YEAR(a.created_at) AS acc_year,
+                (SELECT COUNT(*) FROM class_teacher ct WHERE ct.teacher_id = t.teacher_id) AS class_count
             FROM teachers t
             JOIN accounts a ON a.account_id = t.account_id
             ORDER BY t.teacher_id ASC
@@ -125,13 +128,6 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
                 $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
 
-                $class_count = 0;
-                try {
-                    if ($cc = $conn->query("SELECT COUNT(*) AS cnt FROM classes WHERE teacher_id = {$tid}")) {
-                        $class_count = (int)($cc->fetch_assoc()['cnt'] ?? 0);
-                    }
-                } catch (Throwable $ignore) {}
-
                 $teachers_list[] = [
                     'raw_id'         => $tid,
                     'account_id'     => (int)$r['account_id'],
@@ -139,16 +135,17 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'account_code'   => $acc_code,
                     'full_name'      => $full_name,
                     'initials'       => strtoupper(substr((string)($r['first_name'] ?? 'T'), 0, 1) . substr((string)($r['last_name'] ?? 'H'), 0, 1)),
-                    'specialization' => $r['specialization'] ?: 'General FSL Instruction',
-                    'experience'     => (int)($r['years_experience'] ?? 0),
-                    'contact'        => $r['contact_number'] ?: '—',
+                    'specialization' => $r['specialization'] ?? 'General FSL Instruction',
+                    'experience'     => (int)($r['years_of_experience'] ?? ($r['years_experience'] ?? 0)),
+                    'contact'        => $r['contact_number'] ?? '—',
                     'email'          => $r['email'] ?? '—',
-                    'classes_count'  => $class_count,
+                    'classes_count'  => (int)($r['class_count'] ?? 0),
                     'status'         => $status,
                 ];
             }
         }
     } catch (Throwable $e) {
+        error_log("Teachers query error: " . $e->getMessage());
         $teachers_list = [];
     }
 
