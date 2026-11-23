@@ -20,10 +20,11 @@ if (!csrf_verify($_POST['csrf_token'] ?? null)) {
 }
 
 $first    = trim($_POST['first_name'] ?? '');
+$middle   = trim($_POST['middle_name'] ?? '');
 $last     = trim($_POST['last_name'] ?? '');
 $username = trim($_POST['username'] ?? '');
 $email    = trim($_POST['email'] ?? '');
-$hub      = trim($_POST['hub_assignment'] ?? '');
+$contact  = trim($_POST['contact_number'] ?? '');
 $password = $_POST['password'] ?? '';
 
 if ($first === '' || $last === '' || $username === '' || $email === '') {
@@ -34,6 +35,9 @@ if (strlen($username) > 30) {
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     back('admin_error=email');
+}
+if (!preg_match('/^[0-9+\-\s()]{7,20}$/', $contact)) {
+    back('admin_error=contact');
 }
 if (strlen($password) < 8) {
     back('admin_error=password');
@@ -53,11 +57,11 @@ try {
     $stmt->close();
 
     // administrators.contact_number is NOT NULL and the form has no phone field
-    $contact = 'N/A';
+    $middle_db = ($middle === '') ? null : $middle;
     $stmt = $conn->prepare(
-        'INSERT INTO administrators (account_id, first_name, last_name, contact_number) VALUES (?, ?, ?, ?)'
+        'INSERT INTO administrators (account_id, first_name, middle_name, last_name, contact_number) VALUES (?, ?, ?, ?, ?)'
     );
-    $stmt->bind_param('isss', $account_id, $first, $last, $contact);
+    $stmt->bind_param('issss', $account_id, $first, $middle_db, $last, $contact);
     $stmt->execute();
     $stmt->close();
 
