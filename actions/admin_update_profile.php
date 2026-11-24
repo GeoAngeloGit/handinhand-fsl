@@ -73,8 +73,13 @@ try {
     // role table
     $skip = static fn($v) => ($v === '—' ? '' : $v);
     if ($type === 'admin') {
-        $stmt = $conn->prepare('UPDATE administrators SET first_name = ?, last_name = ? WHERE admin_id = ?');
-        $stmt->bind_param('ssi', $first, $last, $id);
+        $contact = $skip(trim((string)($f['Contact Number'] ?? '')));
+$stmt = $conn->prepare(
+    'UPDATE administrators SET first_name = ?, last_name = ?,
+            contact_number = COALESCE(NULLIF(?, ""), contact_number)
+      WHERE admin_id = ?'
+);
+$stmt->bind_param('sssi', $first, $last, $contact, $id);
     } elseif ($type === 'teacher') {
         $contact = $skip(trim((string)($f['Contact Number'] ?? '')));
         $spec    = trim((string)($f['FSL Specialization'] ?? ''));

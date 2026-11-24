@@ -176,7 +176,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $raw_user  = (string)($r['username'] ?? '');
                 $uname     = $raw_user !== '' ? (str_starts_with($raw_user, '@') ? $raw_user : '@' . $raw_user) : '—';
                 $date_add  = !empty($r['created_at']) ? date('M j, Y', strtotime((string)$r['created_at'])) : '—';
-                $loc       = $r['location'] ?? ($r['hub_assignment'] ?? (!empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Rawis, Legazpi City'));
+                $contact   = $r['contact_number'] ?? '—';
 
                 $admins_list[] = [
                     'raw_id'       => $aid,
@@ -186,7 +186,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'full_name'    => $full_name,
                     'initials'     => strtoupper(substr((string)($r['first_name'] ?? 'A'), 0, 1) . substr((string)($r['last_name'] ?? 'D'), 0, 1)),
                     'username'     => $uname,
-                    'location'     => $loc,
+                    'contact'      => $contact,
                     'email'        => $r['email'] ?? '—',
                     'date_added'   => $date_add,
                     'status'       => $status,
@@ -575,7 +575,7 @@ function count_active_inactive(array $rows): array {
                                     ['label' => 'Admin ID',   'value' => $adm['code']],
                                     ['label' => 'Full Name',  'value' => $adm['full_name']],
                                     ['label' => 'Username',   'value' => $adm['username']],
-                                    ['label' => 'Location',   'value' => $adm['location']],
+                                    ['label' => 'Contact Number', 'value' => $adm['contact']],
                                     ['label' => 'Email',      'value' => $adm['email']],
                                     ['label' => 'Date Added', 'value' => $adm['date_added']],
                                 ]
@@ -690,6 +690,10 @@ function count_active_inactive(array $rows): array {
                     <input type="text" id="naFirstName" name="first_name" placeholder="e.g., Camille" required>
                 </div>
                 <div class="na-field">
+                    <label for="naMiddleName">MIDDLE NAME (OPTIONAL)</label>
+                    <input type="text" id="naMiddleName" name="middle_name" placeholder="e.g., Santos">
+                </div>
+                <div class="na-field">
                     <label for="naLastName">LAST NAME</label>
                     <input type="text" id="naLastName" name="last_name" placeholder="e.g., Ortega" required>
                 </div>
@@ -702,14 +706,8 @@ function count_active_inactive(array $rows): array {
                     <input type="email" id="naEmail" name="email" placeholder="e.g., tabaco.admin@handinhand.ph" required>
                 </div>
                 <div class="na-field">
-                    <label for="naHub">LOCATION / HUB</label>
-                    <select id="naHub" name="hub_assignment">
-                        <option value="Rawis, Legazpi City">Rawis, Legazpi City</option>
-                        <option value="Sagpon, Daraga">Sagpon, Daraga</option>
-                        <option value="San Lorenzo, Tabaco City">San Lorenzo, Tabaco City</option>
-                        <option value="Centro, Ligao City">Centro, Ligao City</option>
-                        <option value="Centro Oriental, Polangui">Centro Oriental, Polangui</option>
-                    </select>
+                    <label for="naContact">CONTACT NUMBER</label>
+                    <input type="tel" id="naContact" name="contact_number" placeholder="e.g., 09123456789" required>
                 </div>
                 <div class="na-field">
                     <label for="naPassword">TEMPORARY PASSWORD</label>
