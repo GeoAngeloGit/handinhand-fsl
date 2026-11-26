@@ -9,7 +9,7 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-$accountId = (int)($_SESSION['account_id'] ?? 1);
+$accountId = (int)($_SESSION['account_id'] ?? 0);
 
 if (isset($_GET['switch_learner'])) {
     $_SESSION['active_learner_id'] = (int)$_GET['switch_learner'];
@@ -22,122 +22,164 @@ $enrollmentsList = [];
 $gradesList      = [];
 $municipalities  = [];
 $barangays       = [];
+$dbErrors        = [];
+$activeLearnerId = (int)($_SESSION['active_learner_id'] ?? 0);
 
-try {
-    // 1. Learners under the active account
-    $stmt = $conn->prepare("
-        SELECT l.*, m.municipality_name, b.barangay_name
-        FROM learners l
-        LEFT JOIN municipalities m ON l.municipality_id = m.municipality_id
-        LEFT JOIN barangays b ON l.barangay_id = b.barangay_id
-        WHERE l.account_id = ?
-        ORDER BY l.learner_id ASC
-    ");
-    $stmt->bind_param('i', $accountId);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $learnersList[] = $row;
-    }
-    $stmt->close();
-
-    // Validate active_learner_id belongs to this account
-    $activeLearnerId = (int)($_SESSION['active_learner_id'] ?? 0);
-    $validIds = array_map(fn($r) => (int)$r['learner_id'], $learnersList);
-    if (!in_array($activeLearnerId, $validIds, true)) {
-        $activeLearnerId = $validIds[0] ?? 0;
-        $_SESSION['active_learner_id'] = $activeLearnerId;
-    }
-
-    // 2. All Classes + assigned teachers + active enrolled count
-    $classSql = "
-        SELECT c.*,
-               COALESCE(
-                 GROUP_CONCAT(DISTINCT CONCAT('Teacher ', t.first_name, ' ', t.last_name) ORDER BY t.teacher_id SEPARATOR ', '),
-                 'TBA'
-               ) AS instructor,
-               (SELECT COUNT(*) FROM enrollments e2 WHERE e2.class_id = c.class_id AND e2.status IN ('enrolled','completed')) AS current_enrolled
-        FROM classes c
-        LEFT JOIN class_teachers ct ON c.class_id = ct.class_id
-        LEFT JOIN teachers t ON ct.teacher_id = t.teacher_id
-        GROUP BY c.class_id
-        ORDER BY c.class_id ASC
-    ";
-    if ($res = $conn->query($classSql)) {
-        while ($row = $res->fetch_assoc()) {
-            $classesList[] = $row;
+if (isset($conn) && $conn instanceof mysqli) {
+    // 1. Learners (join municipalities via barangays.municipality_id)
+    try {
+        if ($accountId > 0) {
+            $stmt = $conn->prepare("
+                SELECT l.*, b.municipality_id, m.municipality_name, b.barangay_name
+                FROM `learners` l
+                LEFT JOIN `barangays` b ON l.barangay_id = b.barangay_id
+                LEFT JOIN `municipalities` m ON b.municipality_id = m.municipality_id
+                WHERE l.account_id = ?
+                ORDER BY l.learner_id ASC
+            ");
+            $stmt->bind_param('i', $accountId);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $learnersList[] = $row;
+            }
+            $stmt->close();
         }
+
+        // Fallback if session account_id had no matching rows or wasn't set yet
+        if (empty($learnersList)) {
+            $res = $conn->query("
+                SELECT l.*, b.municipality_id, m.municipality_name, b.barangay_name
+                FROM `learners` l
+                LEFT JOIN `barangays` b ON l.barangay_id = b.barangay_id
+                LEFT JOIN `municipalities` m ON b.municipality_id = m.municipality_id
+                ORDER BY l.learner_id ASC
+            ");
+            if ($res) {
+                while ($row = $res->fetch_assoc()) {
+                    $learnersList[] = $row;
+                }
+            }
+        }
+
+        $validIds = array_map(fn($r) => (int)$r['learner_id'], $learnersList);
+        if (!in_array($activeLearnerId, $validIds, true)) {
+            $activeLearnerId = $validIds[0] ?? 0;
+            $_SESSION['active_learner_id'] = $activeLearnerId;
+        }
+    } catch (mysqli_sql_exception $e) {
+        $dbErrors['learners'] = $e->getMessage();
+    }
+
+    // 2. Classes + assigned teachers + venue
+    try {
+        $classSql = "
+            SELECT c.class_id, c.created_by, c.class_title, c.description,
+                   c.max_capacity, c.current_enrolled, c.status,
+                   COALESCE(
+                     GROUP_CONCAT(DISTINCT CONCAT('Teacher ', t.first_name, ' ', t.last_name) ORDER BY t.teacher_id SEPARATOR ', '),
+                     'TBA'
+                   ) AS instructor,
+                   COALESCE(MIN(cs.venue), 'TBA') AS venue
+            FROM `class` c
+            LEFT JOIN `class_teacher` ct ON c.class_id = ct.class_id
+            LEFT JOIN `teacher` t ON ct.teacher_id = t.teacher_id
+            LEFT JOIN `class_schedule` cs ON c.class_id = cs.class_id
+            GROUP BY c.class_id
+            ORDER BY c.class_id ASC
+        ";
+        if ($res = $conn->query($classSql)) {
+            while ($row = $res->fetch_assoc()) {
+                $classesList[] = $row;
+            }
+        }
+    } catch (mysqli_sql_exception $e) {
+        $dbErrors['classes'] = $e->getMessage();
     }
 
     // 3. Class Schedules
-    $schSql = "
-        SELECT cs.schedule_id, cs.class_id, cs.session_date,
-               TIME_FORMAT(cs.start_time, '%l:%i %p') AS start_time,
-               c.venue
-        FROM class_schedules cs
-        JOIN classes c ON cs.class_id = c.class_id
-        ORDER BY cs.session_date ASC, cs.start_time ASC
-    ";
-    if ($res = $conn->query($schSql)) {
-        while ($row = $res->fetch_assoc()) {
-            $schedulesList[] = $row;
+    try {
+        $schSql = "
+            SELECT cs.schedule_id, cs.class_id, cs.session_date,
+                   TIME_FORMAT(cs.start_time, '%l:%i %p') AS start_time,
+                   TIME_FORMAT(cs.end_time, '%l:%i %p') AS end_time,
+                   cs.venue, cs.status
+            FROM `class_schedule` cs
+            ORDER BY cs.session_date ASC, cs.start_time ASC
+        ";
+        if ($res = $conn->query($schSql)) {
+            while ($row = $res->fetch_assoc()) {
+                $schedulesList[] = $row;
+            }
         }
+    } catch (mysqli_sql_exception $e) {
+        $dbErrors['schedules'] = $e->getMessage();
     }
 
     // 4. Enrollments for active learner
     if ($activeLearnerId > 0) {
-        $enrStmt = $conn->prepare("
-            SELECT enrollment_id, learner_id, class_id, status, session_rating, instructor_notes,
-                   DATE_FORMAT(enrolled_at, '%Y-%m-%d') AS enrolled_date
-            FROM enrollments
-            WHERE learner_id = ?
-            ORDER BY enrollment_id ASC
-        ");
-        $enrStmt->bind_param('i', $activeLearnerId);
-        $enrStmt->execute();
-        $res = $enrStmt->get_result();
-        while ($row = $res->fetch_assoc()) {
-            $enrollmentsList[] = $row;
+        try {
+            $enrStmt = $conn->prepare("
+                SELECT enrollment_id, learner_id, class_id, status, session_rating, instructor_notes,
+                       DATE_FORMAT(enrolled_at, '%Y-%m-%d') AS enrolled_date
+                FROM `enrollments`
+                WHERE learner_id = ?
+                ORDER BY enrollment_id ASC
+            ");
+            $enrStmt->bind_param('i', $activeLearnerId);
+            $enrStmt->execute();
+            $res = $enrStmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $enrollmentsList[] = $row;
+            }
+            $enrStmt->close();
+        } catch (mysqli_sql_exception $e) {
+            $dbErrors['enrollments'] = $e->getMessage();
         }
-        $enrStmt->close();
 
         // 5. Session Grades / Evaluations
-        $grdStmt = $conn->prepare("
-            SELECT sg.grade_id, sg.enrollment_id, sg.schedule_id, sg.grade_status, sg.remarks,
-                   cs.session_date, TIME_FORMAT(cs.start_time, '%l:%i %p') AS start_time
-            FROM session_grades sg
-            JOIN enrollments e ON sg.enrollment_id = e.enrollment_id
-            JOIN class_schedules cs ON sg.schedule_id = cs.schedule_id
-            WHERE e.learner_id = ?
-            ORDER BY cs.session_date ASC, cs.start_time ASC
-        ");
-        $grdStmt->bind_param('i', $activeLearnerId);
-        $grdStmt->execute();
-        $res = $grdStmt->get_result();
-        while ($row = $res->fetch_assoc()) {
-            $gradesList[] = $row;
+        try {
+            $grdStmt = $conn->prepare("
+                SELECT sg.grade_id, sg.enrollment_id, sg.schedule_id, sg.grade_status, sg.remarks,
+                       cs.session_date, TIME_FORMAT(cs.start_time, '%l:%i %p') AS start_time
+                FROM `session_grades` sg
+                JOIN `enrollments` e ON sg.enrollment_id = e.enrollment_id
+                JOIN `class_schedule` cs ON sg.schedule_id = cs.schedule_id
+                WHERE e.learner_id = ?
+                ORDER BY cs.session_date ASC, cs.start_time ASC
+            ");
+            $grdStmt->bind_param('i', $activeLearnerId);
+            $grdStmt->execute();
+            $res = $grdStmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $gradesList[] = $row;
+            }
+            $grdStmt->close();
+        } catch (mysqli_sql_exception $e) {
+            $dbErrors['session_grades'] = $e->getMessage();
         }
-        $grdStmt->close();
     }
 
     // 6. Albay Municipalities & Barangays
-    if ($res = $conn->query("SELECT municipality_id, municipality_name FROM municipalities ORDER BY municipality_name ASC")) {
-        while ($row = $res->fetch_assoc()) {
-            $municipalities[] = $row;
+    try {
+        if ($res = $conn->query("SELECT municipality_id, municipality_name FROM `municipalities` ORDER BY municipality_name ASC")) {
+            while ($row = $res->fetch_assoc()) {
+                $municipalities[] = $row;
+            }
         }
-    }
-    if ($res = $conn->query("SELECT barangay_id, municipality_id, barangay_name FROM barangays ORDER BY barangay_name ASC")) {
-        while ($row = $res->fetch_assoc()) {
-            $barangays[] = $row;
+        if ($res = $conn->query("SELECT barangay_id, municipality_id, barangay_name FROM `barangays` ORDER BY barangay_name ASC")) {
+            while ($row = $res->fetch_assoc()) {
+                $barangays[] = $row;
+            }
         }
+    } catch (mysqli_sql_exception $e) {
+        $dbErrors['locations'] = $e->getMessage();
     }
-} catch (mysqli_sql_exception $e) {
-    $activeLearnerId = (int)($_SESSION['active_learner_id'] ?? 0);
 }
 
 $initialState = [
     'csrfToken'       => $_SESSION['csrf_token'],
-    'activeLearnerId' => $activeLearnerId ?? 0,
+    'activeLearnerId' => $activeLearnerId,
     'learners'        => $learnersList,
     'classes'         => $classesList,
     'schedules'       => $schedulesList,
@@ -145,6 +187,7 @@ $initialState = [
     'sessionGrades'   => $gradesList,
     'municipalities'  => $municipalities,
     'barangays'       => $barangays,
+    'dbErrors'        => $dbErrors,
 ];
 ?>
 <meta charset="UTF-8" />
