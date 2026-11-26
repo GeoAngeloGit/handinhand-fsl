@@ -62,15 +62,21 @@ $eval_developing   = 0;
 $eval_needs_support = 0;
 
 if (isset($conn) && $conn instanceof mysqli) {
-    $teacher_filter_sql = $teacher_id > 0 ? " WHERE c.teacher_id = {$teacher_id} " : "";
+    $tid = (int)$teacher_id;
 
     // 1. Assigned Classes & KPI counts
     try {
         $sql_classes = "
             SELECT 
-                c.*
-            FROM classes c
-            {$teacher_filter_sql}
+                c.*,
+                c.class_title AS class_name,
+                (SELECT cs.venue FROM class_schedule cs
+                  WHERE cs.class_id = c.class_id
+                  ORDER BY cs.session_date ASC, cs.start_time ASC
+                  LIMIT 1) AS location
+            FROM class c
+            JOIN class_teacher ct ON ct.class_id = c.class_id
+            WHERE ct.teacher_id = {$tid}
             ORDER BY c.class_id ASC
         ";
         if ($res = $conn->query($sql_classes)) {
@@ -78,13 +84,13 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $cid    = (int)$c['class_id'];
                 $status = strtolower((string)($c['status'] ?? 'active'));
                 $total_assigned_classes++;
-                if ($status === 'active' || $status === 'ongoing') {
+                if (in_array($status, ['active', 'open', 'ongoing'], true)) {
                     $active_classes_count++;
                 }
 
                 $enrolled_in_class = 0;
                 try {
-                    if ($ec = $conn->query("SELECT COUNT(*) AS cnt FROM enrollments WHERE class_id = {$cid}")) {
+                    if ($ec = $conn->query("SELECT COUNT(*) AS cnt FROM class_enrollments WHERE class_id = {$cid} AND status = 'enrolled'")) {
                         $enrolled_in_class = (int)($ec->fetch_assoc()['cnt'] ?? 0);
                     }
                 } catch (Throwable $ignore) {}
@@ -104,9 +110,10 @@ if (isset($conn) && $conn instanceof mysqli) {
 
     // 2. Distinct Enrolled Students across Teacher's Classes
     try {
-        $sql_students = $teacher_id > 0
-            ? "SELECT COUNT(DISTINCT e.learner_id) AS cnt FROM enrollments e JOIN classes c ON c.class_id = e.class_id WHERE c.teacher_id = {$teacher_id}"
-            : "SELECT COUNT(DISTINCT learner_id) AS cnt FROM enrollments";
+        $sql_students = "SELECT COUNT(DISTINCT e.learner_id) AS cnt
+                         FROM class_enrollments e
+                         JOIN class_teacher ct ON ct.class_id = e.class_id
+                         WHERE ct.teacher_id = {$tid} AND e.status = 'enrolled'";
         if ($res = $conn->query($sql_students)) {
             $enrolled_students_cnt = (int)($res->fetch_assoc()['cnt'] ?? 0);
         }
@@ -116,9 +123,9 @@ if (isset($conn) && $conn instanceof mysqli) {
 
     // 3. Documented Session Reports Count
     try {
-        $sql_reports = $teacher_id > 0
-            ? "SELECT COUNT(*) AS cnt FROM session_reports WHERE teacher_id = {$teacher_id} AND LOWER(COALESCE(status, 'submitted')) = 'submitted'"
-            : "SELECT COUNT(*) AS cnt FROM session_reports WHERE LOWER(COALESCE(status, 'submitted')) = 'submitted'";
+        // Anything past 'Pending' counts as documented (Finished / Verified / For Revision)
+        $sql_reports = "SELECT COUNT(*) AS cnt FROM post_class_report
+                        WHERE submitted_by = {$tid} AND status <> 'Pending'";
         if ($res = $conn->query($sql_reports)) {
             $documented_reports_cnt = (int)($res->fetch_assoc()['cnt'] ?? 0);
         }
@@ -126,18 +133,18 @@ if (isset($conn) && $conn instanceof mysqli) {
         $documented_reports_cnt = 0;
     }
 
-    // 4. Upcoming Timetable Queue (class_schedules)
+    // 4. Upcoming Timetable Queue (class_schedule)
     try {
-        $where_sched = $teacher_id > 0 ? " WHERE c.teacher_id = {$teacher_id} " : "";
         $sql_sched = "
             SELECT 
                 s.*,
                 c.class_id,
-                c.class_name,
-                c.location
-            FROM class_schedules s
-            JOIN classes c ON c.class_id = s.class_id
-            {$where_sched}
+                c.class_title AS class_name,
+                s.venue AS location
+            FROM class_schedule s
+            JOIN class c ON c.class_id = s.class_id
+            JOIN class_teacher ct ON ct.class_id = c.class_id
+            WHERE ct.teacher_id = {$tid}
             ORDER BY s.session_date ASC, s.start_time ASC
             LIMIT 4
         ";
@@ -164,8 +171,10 @@ if (isset($conn) && $conn instanceof mysqli) {
     // 5. Learner Ratings Breakdown (if evaluations/attendance ratings exist)
     try {
         $sql_eval = "
-            SELECT LOWER(COALESCE(rating, performance_rating, '')) AS r_label, COUNT(*) AS cnt
-            FROM session_attendance
+            SELECT LOWER(COALESCE(sa.session_rating, '')) AS r_label, COUNT(*) AS cnt
+            FROM session_attendance sa
+            JOIN post_class_report r ON r.report_id = sa.report_id
+            WHERE r.submitted_by = {$tid}
             GROUP BY r_label
         ";
         if ($res = $conn->query($sql_eval)) {

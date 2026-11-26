@@ -56,7 +56,11 @@ $learners_list   = [];
 if (isset($conn) && $conn instanceof mysqli) {
     // 1. Fetch Classes for Dropdown
     try {
-        $sql_cls = "SELECT class_id, class_name FROM classes ORDER BY class_id ASC";
+        $sql_cls = "SELECT c.class_id, c.class_title AS class_name
+                    FROM class c
+                    JOIN class_teacher ct ON ct.class_id = c.class_id
+                    WHERE ct.teacher_id = " . (int)$teacher_id . "
+                    ORDER BY c.class_id ASC";
         if ($res = $conn->query($sql_cls)) {
             while ($c = $res->fetch_assoc()) {
                 $cid = (int)$c['class_id'];
@@ -92,15 +96,20 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $lrn_code  = sprintf('LRN-%05d', $lid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
 
-                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
-                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+                $status     = !empty($r['is_active']) ? 'Active' : 'Inactive';
                 $loc        = !empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Rawis, Legazpi City';
 
                 // Enrolled classes for this learner
                 $enrolled_ids   = [];
                 $enrolled_codes = [];
                 try {
-                    $q_enr = "SELECT class_id FROM enrollments WHERE learner_id = {$lid} ORDER BY class_id ASC";
+                    $q_enr = "SELECT e.class_id
+                              FROM class_enrollments e
+                              JOIN class_teacher ct ON ct.class_id = e.class_id
+                              WHERE e.learner_id = {$lid}
+                                AND e.status = 'enrolled'
+                                AND ct.teacher_id = " . (int)$teacher_id . "
+                              ORDER BY e.class_id ASC";
                     if ($ren = $conn->query($q_enr)) {
                         while ($er = $ren->fetch_assoc()) {
                             $ecid = (int)$er['class_id'];
@@ -126,7 +135,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $teacher_remarks   = 'Consistent visual focus and clear sign formation.';
                 try {
                     $q_att = "
-                        SELECT attendance_status, rating, performance_rating, remarks
+                        SELECT status AS attendance_status, session_rating AS rating, remarks
                         FROM session_attendance
                         WHERE learner_id = {$lid}
                         ORDER BY attendance_id DESC
@@ -134,8 +143,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                     ";
                     if ($ratt = $conn->query($q_att)) {
                         if ($ar = $ratt->fetch_assoc()) {
-                            $latest_attendance = $ar['attendance_status'] ?: $latest_attendance;
-                            $obs_rating        = $ar['rating'] ?? ($ar['performance_rating'] ?? $obs_rating);
+                            $latest_attendance = !empty($ar['attendance_status']) ? ucfirst((string)$ar['attendance_status']) : $latest_attendance;
+                            $obs_rating        = $ar['rating'] ?? $obs_rating;
                             $teacher_remarks   = $ar['remarks'] ?: $teacher_remarks;
                         }
                     }

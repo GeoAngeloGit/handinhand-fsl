@@ -54,9 +54,17 @@ $thumb_themes      = ['thumb-maroon', 'thumb-blue', 'thumb-green', 'thumb-amber'
 
 if (isset($conn) && $conn instanceof mysqli) {
     try {
+        // Only classes assigned to this teacher (admin links them via class_teacher)
         $sql_cls = "
-            SELECT c.*
-            FROM classes c
+            SELECT c.*,
+                   c.class_title AS class_name,
+                   (SELECT cs.venue FROM class_schedule cs
+                     WHERE cs.class_id = c.class_id
+                     ORDER BY cs.session_date ASC, cs.start_time ASC
+                     LIMIT 1) AS location
+            FROM class c
+            JOIN class_teacher mine ON mine.class_id = c.class_id
+            WHERE mine.teacher_id = " . (int)$teacher_id . "
             ORDER BY c.class_id ASC
         ";
         if ($res = $conn->query($sql_cls)) {
@@ -74,12 +82,12 @@ if (isset($conn) && $conn instanceof mysqli) {
                     $status_label = 'Active';
                 }
 
-                // Fetch assigned teachers (supports class_teachers pivot table or single c.teacher_id)
+                // Fetch assigned teachers from the class_teacher pivot table
                 $instructors = [];
                 try {
                     $q_ct = "
                         SELECT t.teacher_id, t.first_name, t.last_name
-                        FROM class_teachers ct
+                        FROM class_teacher ct
                         JOIN teachers t ON t.teacher_id = ct.teacher_id
                         WHERE ct.class_id = {$cid}
                         ORDER BY t.teacher_id ASC
@@ -122,9 +130,10 @@ if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $q_enr = "
                         SELECT l.learner_id, l.first_name, l.last_name
-                        FROM enrollments e
+                        FROM class_enrollments e
                         JOIN learners l ON l.learner_id = e.learner_id
                         WHERE e.class_id = {$cid}
+                          AND e.status = 'enrolled'
                         ORDER BY l.learner_id ASC
                     ";
                     if ($ren = $conn->query($q_enr)) {
@@ -145,7 +154,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $q_slots = "
                         SELECT schedule_id, session_date, start_time
-                        FROM class_schedules
+                        FROM class_schedule
                         WHERE class_id = {$cid}
                         ORDER BY session_date ASC, start_time ASC
                     ";
@@ -190,10 +199,12 @@ if (isset($conn) && $conn instanceof mysqli) {
             SELECT 
                 s.*,
                 c.class_id,
-                c.class_name,
-                c.location
-            FROM class_schedules s
-            JOIN classes c ON c.class_id = s.class_id
+                c.class_title AS class_name,
+                s.venue AS location
+            FROM class_schedule s
+            JOIN class c ON c.class_id = s.class_id
+            JOIN class_teacher mine ON mine.class_id = c.class_id
+            WHERE mine.teacher_id = " . (int)$teacher_id . "
             ORDER BY s.session_date ASC, s.start_time ASC
             LIMIT 6
         ";

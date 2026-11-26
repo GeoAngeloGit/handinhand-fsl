@@ -65,8 +65,11 @@ if (isset($conn) && $conn instanceof mysqli) {
                 l.middle_name,
                 l.last_name,
                 l.hearing_status
-            FROM enrollments e
+            FROM class_enrollments e
             JOIN learners l ON l.learner_id = e.learner_id
+            JOIN class_teacher ct ON ct.class_id = e.class_id
+            WHERE ct.teacher_id = " . (int)$teacher_id . "
+              AND e.status = 'enrolled'
             ORDER BY e.class_id ASC, l.learner_id ASC
         ";
         if ($res = $conn->query($q_rosters)) {
@@ -94,10 +97,12 @@ if (isset($conn) && $conn instanceof mysqli) {
                 s.class_id,
                 s.session_date,
                 s.start_time,
-                c.class_name,
-                c.location
-            FROM class_schedules s
-            JOIN classes c ON c.class_id = s.class_id
+                c.class_title AS class_name,
+                s.venue AS location
+            FROM class_schedule s
+            JOIN class c ON c.class_id = s.class_id
+            JOIN class_teacher ct ON ct.class_id = c.class_id
+            WHERE ct.teacher_id = " . (int)$teacher_id . "
             ORDER BY s.session_date ASC, s.start_time ASC
         ";
         if ($res = $conn->query($q_sched)) {
@@ -128,23 +133,32 @@ if (isset($conn) && $conn instanceof mysqli) {
         $q_rep = "
             SELECT 
                 r.*,
+                r.submission_timestamp AS submitted_at,
                 s.schedule_id,
                 s.session_date,
                 s.start_time,
                 c.class_id,
-                c.class_name,
-                c.location
-            FROM session_reports r
-            LEFT JOIN class_schedules s ON s.schedule_id = r.schedule_id
-            LEFT JOIN classes c ON c.class_id = COALESCE(s.class_id, r.class_id)
+                c.class_title AS class_name,
+                s.venue AS location,
+                (SELECT p.photo_file_path FROM report_photos p
+                  WHERE p.report_id = r.report_id
+                  ORDER BY p.photo_id ASC LIMIT 1) AS photo_proof
+            FROM post_class_report r
+            JOIN class_schedule s ON s.schedule_id = r.schedule_id
+            JOIN class c ON c.class_id = s.class_id
+            JOIN class_teacher ct ON ct.class_id = c.class_id
+            WHERE ct.teacher_id = " . (int)$teacher_id . "
             ORDER BY r.report_id DESC
         ";
         if ($res = $conn->query($q_rep)) {
             while ($rp = $res->fetch_assoc()) {
                 $rid        = (int)$rp['report_id'];
                 $sid        = (int)($rp['schedule_id'] ?? 0);
-                $raw_status = strtolower(trim((string)($rp['status'] ?? 'submitted')));
-                $is_draft   = ($raw_status === 'draft');
+                // Canonical statuses: Pending, Finished, Verified, For Revision
+                $status_map    = ['pending' => 'Pending', 'finished' => 'Finished', 'verified' => 'Verified', 'for revision' => 'For Revision'];
+                $raw_status    = strtolower(trim((string)($rp['status'] ?? 'pending')));
+                $status_label  = $status_map[$raw_status] ?? 'Pending';
+                $admin_remarks = trim((string)($rp['admin_remarks'] ?? ''));
 
                 $photo_path = trim((string)($rp['photo_proof'] ?? ($rp['session_photo'] ?? '')));
                 $has_photo  = ($photo_path !== '');
@@ -157,7 +171,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $present_cnt = (int)($rp['present_count'] ?? 0);
                 $total_cnt   = (int)($rp['total_students'] ?? 0);
                 try {
-                    if ($ratt = $conn->query("SELECT COUNT(*) AS tot, SUM(CASE WHEN LOWER(attendance_status)='present' THEN 1 ELSE 0 END) AS pres FROM session_attendance WHERE report_id = {$rid}")) {
+                    if ($ratt = $conn->query("SELECT COUNT(*) AS tot, SUM(CASE WHEN LOWER(status)='present' THEN 1 ELSE 0 END) AS pres FROM session_attendance WHERE report_id = {$rid}")) {
                         $ar = $ratt->fetch_assoc();
                         if ((int)($ar['tot'] ?? 0) > 0) {
                             $total_cnt   = (int)$ar['tot'];
@@ -179,7 +193,11 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'notes'       => $rp['summary_notes'] ?? ($rp['notes'] ?? 'Session summary pending completion.'),
                     'has_photo'   => $has_photo,
                     'photo_path'  => $photo_path,
-                    'status'      => $is_draft ? 'Draft' : 'Submitted',
+                    'status'      => $status_label,
+                    'status_slug' => strtolower(str_replace(' ', '-', $status_label)),
+                    'schedule_id' => $sid,
+                    'class_id'    => (int)($rp['class_id'] ?? 0),
+                    'admin_remarks' => $admin_remarks,
                     'attendance'  => "{$present_cnt}/{$total_cnt} Present",
                     'timestamp'   => $created_fmt,
                 ];
@@ -190,9 +208,11 @@ if (isset($conn) && $conn instanceof mysqli) {
     }
 }
 
-$cnt_all       = count($reports_list);
-$cnt_submitted = count(array_filter($reports_list, fn($r) => $r['status'] === 'Submitted'));
-$cnt_drafts    = count(array_filter($reports_list, fn($r) => $r['status'] === 'Draft'));
+$cnt_all = count($reports_list);
+$cnt_by_status = ['Pending' => 0, 'Finished' => 0, 'Verified' => 0, 'For Revision' => 0];
+foreach ($reports_list as $r) {
+    $cnt_by_status[$r['status']]++;
+}
 
 $flash_msg  = $_SESSION['report_flash'] ?? '';
 $flash_type = $_SESSION['report_flash_type'] ?? 'success';
@@ -209,7 +229,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/teacher.css?v=6">
+    <link rel="stylesheet" href="assets/css/teacher.css?v=7">
 </head>
 <body>
 
@@ -314,11 +334,19 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
             <div class="rpt-filter-row">
                 <div class="segmented-filter-pills" role="tablist">
                     <button type="button" class="rpt-filter-pill active" data-filter="ALL">All Reports (<?php echo $cnt_all; ?>)</button>
-                    <button type="button" class="rpt-filter-pill" data-filter="Submitted">Submitted (<?php echo $cnt_submitted; ?>)</button>
-                    <button type="button" class="rpt-filter-pill" data-filter="Draft">Drafts (<?php echo $cnt_drafts; ?>)</button>
+                    <?php foreach ($cnt_by_status as $st_name => $st_cnt): ?>
+                        <button type="button" class="rpt-filter-pill" data-filter="<?php echo htmlspecialchars($st_name); ?>">
+                            <?php echo htmlspecialchars($st_name); ?> (<?php echo $st_cnt; ?>)
+                        </button>
+                    <?php endforeach; ?>
                 </div>
 
-                <span class="rpt-counts-text"><?php echo $cnt_submitted; ?> Submitted &bull; <?php echo$cnt_drafts; ?> Draft</span>
+                <span class="rpt-counts-text">
+                    <?php echo $cnt_by_status['Pending']; ?> Pending &bull;
+                    <?php echo $cnt_by_status['Finished']; ?> Finished &bull;
+                    <?php echo $cnt_by_status['Verified']; ?> Verified &bull;
+                    <?php echo $cnt_by_status['For Revision']; ?> For Revision
+                </span>
             </div>
         </section>
 
@@ -329,9 +357,9 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
                     No session reports documented yet. Click <strong>+ Make a Session Report</strong> above to create your first log.
                 </div>
             <?php else: ?>
-                <?php foreach ($reports_list as$rpt): ?>
+                <?php foreach ($reports_list as $rpt): ?>
                     <?php
-                        $is_submitted = ($rpt['status'] === 'Submitted');
+                        $can_edit   = in_array($rpt['status'], ['Pending', 'For Revision'], true);
                         $modal_json   = htmlspecialchars(json_encode($rpt), ENT_QUOTES, 'UTF-8');
                     ?>
                     <article class="rpt-item-card"
@@ -351,7 +379,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
                                     <span class="rpt-photo-pill missing">No Photo Yet</span>
                                 <?php endif; ?>
 
-                                <span class="class-status-pill <?php echo $is_submitted ? 'status-active' : 'status-rescheduled'; ?>">
+                                <span class="class-status-pill rpt-status-<?php echo htmlspecialchars($rpt['status_slug']); ?>">
                                     <?php echo htmlspecialchars($rpt['status']); ?>
                                 </span>
                             </div>
@@ -362,9 +390,24 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 
                         <p class="rpt-item-notes"><?php echo htmlspecialchars($rpt['notes']); ?></p>
 
+                        <?php if ($rpt['status'] === 'For Revision'): ?>
+                            <div class="rpt-revision-note">
+                                <strong>Admin remarks</strong>
+                                <p><?php echo $rpt['admin_remarks'] !== ''
+                                    ? nl2br(htmlspecialchars($rpt['admin_remarks']))
+                                    : 'No remarks were provided. Please review and resubmit.'; ?></p>
+                            </div>
+                        <?php endif; ?>
+
                         <div class="rpt-item-footer">
                             <strong><?php echo htmlspecialchars($rpt['attendance']); ?></strong>
                             <span>&bull; <?php echo htmlspecialchars($rpt['timestamp']); ?></span>
+                            <?php if ($can_edit): ?>
+                                <button type="button" class="btn-revise-report"
+                                        data-schedule-id="<?php echo (int)$rpt['schedule_id']; ?>">
+                                    <?php echo $rpt['status'] === 'For Revision' ? 'Revise &amp; Resubmit' : 'Continue Report'; ?>
+                                </button>
+                            <?php endif; ?>
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -386,7 +429,11 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
         </div>
 
         <form id="sessionReportForm" action="actions/teacher_save_report.php" method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="teacher_id" value="<?php echo (int)$teacher_id; ?>">
+            <?php
+            // CSRF token (verified by actions/teacher_save_report.php). The teacher is derived server-side.
+            if (function_exists('csrf_token')): ?>
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars((string)csrf_token()); ?>">
+            <?php elseif (function_exists('csrf_field')): echo csrf_field(); endif; ?>
             <input type="hidden" name="report_action" id="reportActionInput" value="submitted">
             <input type="hidden" name="use_sample_photo" id="useSamplePhotoInput" value="0">
 
@@ -398,7 +445,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
                         <?php if (empty($schedules_options)): ?>
                             <option value="0" data-class-id="0">No class schedules available</option>
                         <?php else: ?>
-                            <?php foreach ($schedules_options as$sch): ?>
+                            <?php foreach ($schedules_options as $sch): ?>
                                 <option value="<?php echo (int)$sch['schedule_id']; ?>"
                                         data-class-id="<?php echo (int)$sch['class_id']; ?>">
                                     <?php echo htmlspecialchars($sch['label']); ?>
@@ -422,7 +469,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
                 </div>
 
                 <div class="rpt-students-scroll" id="reportStudentsContainer">
-                    <!-- Populated dynamically by teacher_reports.js -->
+                    <!-- Populated dynamically by assets/js/teacher.js -->
                 </div>
             </div>
 
@@ -475,7 +522,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
             <div>
                 <div class="cls-modal-eyebrow-row">
                     <span id="viewRptCodes"></span>
-                    <span class="class-status-pill status-active" id="viewRptStatus"></span>
+                    <span class="class-status-pill" id="viewRptStatus"></span>
                 </div>
                 <h2 class="cls-modal-title" id="viewRptTitle"></h2>
                 <p class="cls-modal-loc" id="viewRptMeta"></p>
@@ -486,6 +533,11 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
         <div class="cls-overview-box">
             <span class="cls-box-eyebrow">SESSION SUMMARY NOTES</span>
             <p class="cls-modal-desc" id="viewRptNotes"></p>
+        </div>
+
+        <div class="cls-overview-box rpt-revision-note" id="viewRptRevisionBox" hidden>
+            <span class="cls-box-eyebrow">ADMIN REMARKS (FOR REVISION)</span>
+            <p class="cls-modal-desc" id="viewRptAdminRemarks"></p>
         </div>
 
         <div class="cls-detail-rows">
@@ -512,6 +564,6 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 <script>
 window.ROSTERS_BY_CLASS = <?php echo json_encode($rosters_by_class, JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/teacher.js?v=1"></script>
+<script src="assets/js/teacher.js?v=2"></script>
 </body>
 </html>
