@@ -83,7 +83,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                    COALESCE(MIN(cs.venue), 'TBA') AS venue
             FROM `class` c
             LEFT JOIN `class_teacher` ct ON c.class_id = ct.class_id
-            LEFT JOIN `teacher` t ON ct.teacher_id = t.teacher_id
+            LEFT JOIN `teachers` t ON ct.teacher_id = t.teacher_id
             LEFT JOIN `class_schedule` cs ON c.class_id = cs.class_id
             GROUP BY c.class_id
             ORDER BY c.class_id ASC
@@ -120,12 +120,12 @@ if (isset($conn) && $conn instanceof mysqli) {
     if ($activeLearnerId > 0) {
         try {
             $enrStmt = $conn->prepare("
-                SELECT enrollment_id, learner_id, class_id, status, session_rating, instructor_notes,
-                       DATE_FORMAT(enrolled_at, '%Y-%m-%d') AS enrolled_date
-                FROM `enrollments`
-                WHERE learner_id = ?
-                ORDER BY enrollment_id ASC
-            ");
+            SELECT enrollment_id, learner_id, class_id, status,
+                DATE_FORMAT(enrollment_date, '%Y-%m-%d') AS enrolled_date
+            FROM `class_enrollments`
+            WHERE learner_id = ?
+            ORDER BY enrollment_id ASC
+        ");
             $enrStmt->bind_param('i', $activeLearnerId);
             $enrStmt->execute();
             $res = $enrStmt->get_result();
@@ -140,14 +140,21 @@ if (isset($conn) && $conn instanceof mysqli) {
         // 5. Session Grades / Evaluations
         try {
             $grdStmt = $conn->prepare("
-                SELECT sg.grade_id, sg.enrollment_id, sg.schedule_id, sg.grade_status, sg.remarks,
-                       cs.session_date, TIME_FORMAT(cs.start_time, '%l:%i %p') AS start_time
-                FROM `session_grades` sg
-                JOIN `enrollments` e ON sg.enrollment_id = e.enrollment_id
-                JOIN `class_schedule` cs ON sg.schedule_id = cs.schedule_id
-                WHERE e.learner_id = ?
-                ORDER BY cs.session_date ASC, cs.start_time ASC
-            ");
+            SELECT v.attendance_id AS grade_id,
+                e.enrollment_id,
+                v.class_id,
+                v.schedule_id,
+                v.attendance_status,
+                v.session_rating,
+                v.remarks,
+                v.session_date,
+                TIME_FORMAT(v.start_time, '%l:%i %p') AS start_time
+            FROM `vw_session_attendance_grades` v
+            JOIN `class_enrollments` e
+            ON e.class_id = v.class_id AND e.learner_id = v.learner_id
+            WHERE v.learner_id = ?
+            ORDER BY v.session_date ASC, v.start_time ASC
+        ");
             $grdStmt->bind_param('i', $activeLearnerId);
             $grdStmt->execute();
             $res = $grdStmt->get_result();

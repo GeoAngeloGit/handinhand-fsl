@@ -30,10 +30,16 @@
       <span class="text-[9.5px] font-bold uppercase tracking-[0.10em] text-[#8D2645]">COURSE ENROLLMENT</span>
       <h2 id="register-modal-title" class="font-display font-bold text-[22px] text-[#5B0F2B] mt-0.5">Confirm <em class="italic text-[#8D2645]">Class Registration</em></h2>
     </div>
-    <div id="register-modal-body" class="flex flex-col gap-2.5 text-[12px] text-[#6D4C57]"></div>
+    <div id="register-modal-body" class="flex flex-col gap-2.5 text-[12px] text-[#6D4C57]">
+      <div><span class="font-semibold text-[#5B0F2B]">Class code:</span> <span id="rc-modal-class-code"></span></div>
+      <div><span class="font-semibold text-[#5B0F2B]">Class:</span> <span id="rc-modal-class-title"></span></div>
+      <div><span class="font-semibold text-[#5B0F2B]">Venue:</span> <span id="rc-modal-venue"></span></div>
+      <div><span class="font-semibold text-[#5B0F2B]">Instructor:</span> <span id="rc-modal-instructor"></span></div>
+      <div><span class="font-semibold text-[#5B0F2B]">Learner:</span> <span id="rc-modal-learner-label"></span></div>
+    </div>
     <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-[#5B0F2B]/[0.08]">
       <button type="button" onclick="closeModal('modal-register-confirm')" class="px-4 py-2 rounded-xl border border-[#5B0F2B]/15 text-[#5B0F2B] text-[12px] font-semibold hover:bg-[#F8F6F7] cursor-pointer">Cancel</button>
-      <button id="register-confirm-btn" type="button" class="px-5 py-2 rounded-xl bg-[#5B0F2B] hover:bg-[#8D2645] text-white text-[12px] font-semibold btn-burgundy-shadow cursor-pointer">Confirm Registration</button>
+      <button id="rc-confirm-btn" type="button" class="px-5 py-2 rounded-xl bg-[#5B0F2B] hover:bg-[#8D2645] text-white text-[12px] font-semibold btn-burgundy-shadow cursor-pointer">Confirm Registration</button>
     </div>
   </div>
 </div>
