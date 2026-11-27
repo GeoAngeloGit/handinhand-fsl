@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 26, 2026 at 02:43 AM
+-- Generation Time: Nov 27, 2026 at 04:07 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -26,7 +26,7 @@ DELIMITER $$
 -- Procedures
 --
 DROP PROCEDURE IF EXISTS `sp_create_class`$$
-CREATE PROCEDURE `sp_create_class` (IN `p_created_by` INT, IN `p_class_title` VARCHAR(200), IN `p_description` TEXT, IN `p_max_capacity` INT, IN `p_teachers_json` JSON, IN `p_status` ENUM('Draft','Open','Ongoing','Completed','Cancelled'), IN `p_session_date` DATE, IN `p_start_time` TIME, IN `p_end_time` TIME, IN `p_venue` VARCHAR(255))   BEGIN
+CREATE DEFINER=`` PROCEDURE `sp_create_class` (IN `p_created_by` INT, IN `p_class_title` VARCHAR(200), IN `p_description` TEXT, IN `p_max_capacity` INT, IN `p_teachers_json` JSON, IN `p_status` ENUM('Draft','Open','Ongoing','Completed','Cancelled'), IN `p_session_date` DATE, IN `p_start_time` TIME, IN `p_end_time` TIME, IN `p_venue` VARCHAR(255))   BEGIN
     DECLARE v_class_id INT;
     DECLARE v_idx INT DEFAULT 0;
     DECLARE v_count INT DEFAULT 0;
@@ -67,16 +67,17 @@ CREATE PROCEDURE `sp_create_class` (IN `p_created_by` INT, IN `p_class_title` VA
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_enroll_learner`$$
-CREATE PROCEDURE `sp_enroll_learner` (IN `p_class_id` INT, IN `p_learner_id` INT)   BEGIN
+CREATE DEFINER=`` PROCEDURE `sp_enroll_learner` (IN `p_class_id` INT, IN `p_learner_id` INT)   BEGIN
     DECLARE v_status VARCHAR(20);
     DECLARE v_enrolled INT;
     DECLARE v_capacity INT;
+    DECLARE v_existing_status VARCHAR(20);
 
-    SELECT `status`, `max_capacity`, `current_enrolled`
-    INTO v_status, v_capacity, v_enrolled
-    FROM `class`
-    WHERE `class_id` = p_class_id
-    FOR UPDATE;
+    SELECT status, current_enrolled, max_capacity
+      INTO v_status, v_enrolled, v_capacity
+      FROM class
+     WHERE class_id = p_class_id
+     FOR UPDATE;
 
     IF v_status IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Class does not exist.';
@@ -84,14 +85,27 @@ CREATE PROCEDURE `sp_enroll_learner` (IN `p_class_id` INT, IN `p_learner_id` INT
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Class is not open for enrollment.';
     ELSEIF v_enrolled >= v_capacity THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Class has reached maximum capacity.';
+    END IF;
+
+    SELECT status INTO v_existing_status
+      FROM class_enrollments
+     WHERE class_id = p_class_id AND learner_id = p_learner_id
+     LIMIT 1;
+
+    IF v_existing_status = 'enrolled' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Learner is already enrolled in this class.';
+    ELSEIF v_existing_status IS NOT NULL THEN
+        UPDATE class_enrollments
+           SET status = 'enrolled', enrollment_date = CURRENT_DATE
+         WHERE class_id = p_class_id AND learner_id = p_learner_id;
     ELSE
-        INSERT INTO `class_enrollments` (`class_id`, `learner_id`, `status`)
+        INSERT INTO class_enrollments (class_id, learner_id, status)
         VALUES (p_class_id, p_learner_id, 'enrolled');
     END IF;
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_finalize_class_report`$$
-CREATE PROCEDURE `sp_finalize_class_report` (IN `p_report_id` INT, IN `p_teacher_id` INT, IN `p_summary_notes` TEXT)   BEGIN
+CREATE DEFINER=`` PROCEDURE `sp_finalize_class_report` (IN `p_report_id` INT, IN `p_teacher_id` INT, IN `p_summary_notes` TEXT)   BEGIN
     DECLARE v_schedule_id INT DEFAULT NULL;
     DECLARE v_status VARCHAR(30) DEFAULT NULL;
 
@@ -130,7 +144,7 @@ CREATE PROCEDURE `sp_finalize_class_report` (IN `p_report_id` INT, IN `p_teacher
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_grade_learner_session`$$
-CREATE PROCEDURE `sp_grade_learner_session` (IN `p_report_id` INT, IN `p_learner_id` INT, IN `p_session_rating` ENUM('Satisfactory','Needs Practice','Unsatisfactory'), IN `p_remarks` VARCHAR(255))   BEGIN
+CREATE DEFINER=`` PROCEDURE `sp_grade_learner_session` (IN `p_report_id` INT, IN `p_learner_id` INT, IN `p_session_rating` ENUM('Satisfactory','Needs Practice','Unsatisfactory'), IN `p_remarks` VARCHAR(255))   BEGIN
     DECLARE v_report_status VARCHAR(30) DEFAULT NULL;
     DECLARE v_learner_id INT DEFAULT NULL;
     DECLARE v_status ENUM('present', 'absent', 'late', 'excused') DEFAULT NULL;
@@ -167,7 +181,7 @@ CREATE PROCEDURE `sp_grade_learner_session` (IN `p_report_id` INT, IN `p_learner
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_record_attendance`$$
-CREATE PROCEDURE `sp_record_attendance` (IN `p_report_id` INT, IN `p_learner_id` INT, IN `p_status` ENUM('present','absent','late','excused'), IN `p_remarks` VARCHAR(255))   BEGIN
+CREATE DEFINER=`` PROCEDURE `sp_record_attendance` (IN `p_report_id` INT, IN `p_learner_id` INT, IN `p_status` ENUM('present','absent','late','excused'), IN `p_remarks` VARCHAR(255))   BEGIN
     DECLARE v_report_id INT DEFAULT NULL;
     DECLARE v_status VARCHAR(30) DEFAULT NULL;
 
@@ -216,7 +230,9 @@ INSERT INTO `accounts` (`account_id`, `role_id`, `username`, `email`, `password_
 (1, 3, 'geolabalan', 'geolabalan@gmail.com', '$2y$10$2jbIBfgkQLbG9rz70ssWSu/wryC8knwMRY65ze7uIO7dsxfjdbERW', '2026-11-20 12:58:36'),
 (3, 2, 'angelogeo', 'angelonavera@gmail.com', '$2y$10$7lC.GA0/RRwfv0rB2LKfLuOTYppzLouBStXIs04JGyGFj1jIDnad6', '2026-11-20 13:19:28'),
 (4, 1, 'adminX', 'adminMarian@gmail.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '2026-11-22 06:07:26'),
-(5, 3, 'Bonnified', 'bonn@gmail.com', '$2y$10$1vNFGUhaERg0v4jKbEPRvujlTWhw7pLrvP7zINObUrEwYiwKPWXXS', '2026-11-25 07:28:33');
+(5, 3, 'Bonnified', 'bonn@gmail.com', '$2y$10$1vNFGUhaERg0v4jKbEPRvujlTWhw7pLrvP7zINObUrEwYiwKPWXXS', '2026-11-25 07:28:33'),
+(6, 3, 'JuanDelapz', 'JuanDela@gmail.com', '$2y$10$fkWXaGGcF9TSt4TQWwtywOuOAovECCB15SLbS9JGbeCB3dYg9FC5.', '2026-11-27 12:18:38'),
+(7, 2, 'Madamdamin', 'madamdaminn@gmail.com', '$2y$10$4JP2DQXT8EErDk.WL7UxTe3O8w3YxUCEHy69ZPBIW24c/BfxjVWBC', '2026-11-27 12:26:47');
 
 -- --------------------------------------------------------
 
@@ -998,6 +1014,14 @@ CREATE TABLE `class` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `class`
+--
+
+INSERT INTO `class` (`class_id`, `created_by`, `class_title`, `description`, `max_capacity`, `current_enrolled`, `status`, `created_at`) VALUES
+(1, 1, 'Basic FSL & Everyday Greetings', 'Foundational Filipino Sign Language finger spelling, introductions, and daily conversational signs.', 15, 1, 'Open', '2026-11-27 12:40:26'),
+(2, 1, 'FSL Numbers, Time & Everyday Phrases', 'Practical Filipino Sign Language covering counting, telling time, family terms, and common community expressions.', 20, 1, 'Open', '2026-11-27 13:03:17');
+
 -- --------------------------------------------------------
 
 --
@@ -1012,6 +1036,15 @@ CREATE TABLE `class_enrollments` (
   `enrollment_date` date NOT NULL DEFAULT curdate(),
   `status` enum('enrolled','dropped','completed') NOT NULL DEFAULT 'enrolled'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `class_enrollments`
+--
+
+INSERT INTO `class_enrollments` (`enrollment_id`, `class_id`, `learner_id`, `enrollment_date`, `status`) VALUES
+(1, 1, 1, '2026-11-27', 'enrolled'),
+(4, 2, 1, '2026-11-27', 'enrolled'),
+(6, 2, 3, '2026-11-27', 'dropped');
 
 --
 -- Triggers `class_enrollments`
@@ -1068,10 +1101,20 @@ CREATE TABLE `class_schedule` (
   `start_time` time NOT NULL,
   `end_time` time NOT NULL CHECK (`end_time` > `start_time`),
   `venue` varchar(255) DEFAULT NULL,
-  `status` enum('scheduled','ongoing','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
+  `status` enum('scheduled','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
   `remarks` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `class_schedule`
+--
+
+INSERT INTO `class_schedule` (`schedule_id`, `class_id`, `session_date`, `start_time`, `end_time`, `venue`, `status`, `remarks`, `created_at`) VALUES
+(1, 1, '2026-11-30', '09:00:00', '11:00:00', 'Legazpi City Community Hub - Room 2', 'scheduled', NULL, '2026-11-27 12:40:26'),
+(2, 2, '2026-12-02', '13:30:00', '15:30:00', 'Daraga Barangay Multi-Purpose Hall', 'scheduled', NULL, '2026-11-27 13:03:17'),
+(3, 1, '2026-11-25', '09:00:00', '11:00:00', 'Legazpi City Community Hub - Room 2', 'completed', NULL, '2026-11-27 14:58:25'),
+(4, 2, '2026-11-26', '13:30:00', '15:30:00', 'Daraga Barangay Multi-Purpose Hall', 'completed', NULL, '2026-11-27 14:58:25');
 
 --
 -- Triggers `class_schedule`
@@ -1109,6 +1152,14 @@ CREATE TABLE `class_teacher` (
   `assigned_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `class_teacher`
+--
+
+INSERT INTO `class_teacher` (`class_id`, `teacher_id`, `assigned_role`, `assigned_at`) VALUES
+(1, 1, 'Lead Instructor', '2026-11-27 12:40:26'),
+(2, 1, 'Lead Instructor', '2026-11-27 13:03:17');
+
 -- --------------------------------------------------------
 
 --
@@ -1139,8 +1190,9 @@ CREATE TABLE `learners` (
 --
 
 INSERT INTO `learners` (`learner_id`, `account_id`, `barangay_id`, `first_name`, `middle_name`, `last_name`, `birthdate`, `gender`, `contact_number`, `hearing_status`, `speech_status`, `accessibility_notes`, `street_address`, `is_active`, `created_at`) VALUES
-(1, 1, 245, 'Geo Angelo', 'Navera', 'LABALAN', '2005-03-09', 'Male', '09515482963', 'Hearing', 'Verbal', 'None', '21, P3 - Guevarra Subdivision', 1, '2026-11-20 12:58:36'),
-(2, 5, 244, 'bon', 'BON', 'BONNN', '2005-05-09', 'Female', '09987456321', 'Hearing', 'Verbal', 'Clear speech clear hearing', 'Purok 1', 1, '2026-11-25 07:28:33');
+(1, 1, 245, 'GEO ANGELO', 'Navera', 'LABALAN', '2005-03-09', 'Male', '09515482963', 'Hearing', 'Verbal', 'None', '21, P3 - Guevarra Subdivision', 1, '2026-11-20 12:58:36'),
+(2, 5, 244, 'bon', 'BON', 'BONNN', '2005-05-09', 'Female', '09987456321', 'Hearing', 'Verbal', 'Clear speech clear hearing', 'Purok 1', 1, '2026-11-25 07:28:33'),
+(3, 6, 475, 'Juan', 'Del', 'Paz', '2009-04-05', 'Male', '09845741236', 'Hearing', 'Verbal', 'has to shout when speaking', '21 P3', 1, '2026-11-27 12:18:38');
 
 -- --------------------------------------------------------
 
@@ -1189,12 +1241,20 @@ DROP TABLE IF EXISTS `post_class_report`;
 CREATE TABLE `post_class_report` (
   `report_id` int(11) NOT NULL,
   `schedule_id` int(11) NOT NULL,
-  `submitted_by` int(11) DEFAULT NULL,
+  `submitted_by` int(11) NOT NULL,
   `status` enum('Pending','Finished','Verified','For Revision') NOT NULL DEFAULT 'Pending',
   `summary_notes` text DEFAULT NULL,
   `admin_remarks` text DEFAULT NULL,
   `submission_timestamp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `post_class_report`
+--
+
+INSERT INTO `post_class_report` (`report_id`, `schedule_id`, `submitted_by`, `status`, `summary_notes`, `admin_remarks`, `submission_timestamp`) VALUES
+(1, 3, 1, 'Verified', 'Covered FSL alphabet finger spelling and basic greetings.', 'Complete attendance and ratings verified.', '2026-11-27 14:58:25'),
+(2, 4, 1, 'Finished', 'Practiced numbers 1-50 and telling time in FSL.', NULL, '2026-11-27 14:58:25');
 
 -- --------------------------------------------------------
 
@@ -1248,6 +1308,15 @@ CREATE TABLE `session_attendance` (
   `remarks` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `session_attendance`
+--
+
+INSERT INTO `session_attendance` (`attendance_id`, `report_id`, `learner_id`, `status`, `session_rating`, `remarks`) VALUES
+(1, 1, 1, 'present', 'Satisfactory', 'Clear handshapes and confident finger spelling.'),
+(2, 1, 3, 'late', 'Needs Practice', 'Arrived 10 minutes late; needs review on vowels.'),
+(3, 2, 3, 'present', 'Satisfactory', 'Accurately signed number sequences and time expressions.');
+
 -- --------------------------------------------------------
 
 --
@@ -1276,7 +1345,8 @@ CREATE TABLE `teachers` (
 --
 
 INSERT INTO `teachers` (`teacher_id`, `account_id`, `barangay_id`, `first_name`, `middle_name`, `last_name`, `gender`, `birthdate`, `street_address`, `contact_number`, `specialization`, `years_of_experience`, `is_active`) VALUES
-(1, 3, 114, 'Angelo Geo', 'Dela', 'Cruz', 'Male', '2005-01-01', 'P2, Rizal St.', '09123456789', 'Basic FSL', 4, 1);
+(1, 3, 114, 'Angelo Geo', 'Dela', 'Cruz', 'Male', '2005-01-01', 'P2, Rizal St.', '09123456789', 'Basic FSL', 4, 1),
+(2, 7, 213, 'Madam', 'ad', 'Damin', 'Female', '1999-02-09', '23 P5', '09545785412', 'Deaf Education', 3, 1);
 
 -- --------------------------------------------------------
 
@@ -1297,6 +1367,7 @@ CREATE TABLE `vw_class_enrolled_rosters` (
 ,`barangay_name` varchar(100)
 ,`municipality_name` varchar(100)
 ,`enrollment_date` date
+,`enrollment_status` enum('enrolled','dropped','completed')
 );
 
 -- --------------------------------------------------------
@@ -1385,7 +1456,7 @@ CREATE TABLE `vw_teacher_assigned_schedules` (
 DROP TABLE IF EXISTS `vw_class_enrolled_rosters`;
 
 DROP VIEW IF EXISTS `vw_class_enrolled_rosters`;
-CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_class_enrolled_rosters`  AS SELECT `ce`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `l`.`learner_id` AS `learner_id`, concat(`l`.`first_name`,' ',`l`.`last_name`) AS `full_name`, `l`.`hearing_status` AS `hearing_status`, `l`.`speech_status` AS `speech_status`, `l`.`contact_number` AS `contact_number`, `a`.`email` AS `email`, `b`.`barangay_name` AS `barangay_name`, `m`.`municipality_name` AS `municipality_name`, `ce`.`enrollment_date` AS `enrollment_date` FROM (((((`class_enrollments` `ce` join `class` `c` on(`c`.`class_id` = `ce`.`class_id`)) join `learners` `l` on(`l`.`learner_id` = `ce`.`learner_id`)) join `accounts` `a` on(`a`.`account_id` = `l`.`account_id`)) left join `barangays` `b` on(`b`.`barangay_id` = `l`.`barangay_id`)) left join `municipalities` `m` on(`m`.`municipality_id` = `b`.`municipality_id`)) ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`` SQL SECURITY DEFINER VIEW `vw_class_enrolled_rosters`  AS SELECT `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `l`.`learner_id` AS `learner_id`, concat(`l`.`first_name`,' ',`l`.`last_name`) AS `full_name`, `l`.`hearing_status` AS `hearing_status`, `l`.`speech_status` AS `speech_status`, `l`.`contact_number` AS `contact_number`, `a`.`email` AS `email`, `b`.`barangay_name` AS `barangay_name`, `m`.`municipality_name` AS `municipality_name`, `ce`.`enrollment_date` AS `enrollment_date`, `ce`.`status` AS `enrollment_status` FROM (((((`class_enrollments` `ce` join `class` `c` on(`ce`.`class_id` = `c`.`class_id`)) join `learners` `l` on(`ce`.`learner_id` = `l`.`learner_id`)) join `accounts` `a` on(`l`.`account_id` = `a`.`account_id`)) join `barangays` `b` on(`l`.`barangay_id` = `b`.`barangay_id`)) join `municipalities` `m` on(`b`.`municipality_id` = `m`.`municipality_id`)) WHERE `ce`.`status` = 'enrolled' ;
 
 -- --------------------------------------------------------
 
@@ -1395,7 +1466,7 @@ CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_class_enrolled_rosters`
 DROP TABLE IF EXISTS `vw_session_attendance_grades`;
 
 DROP VIEW IF EXISTS `vw_session_attendance_grades`;
-CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_session_attendance_grades`  AS SELECT `sa`.`attendance_id` AS `attendance_id`, `sa`.`learner_id` AS `learner_id`, concat(`l`.`last_name`,', ',`l`.`first_name`) AS `learner_name`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `cs`.`schedule_id` AS `schedule_id`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `sa`.`status` AS `attendance_status`, `sa`.`session_rating` AS `session_rating`, `sa`.`remarks` AS `remarks`, `pcr`.`report_id` AS `report_id` FROM ((((`session_attendance` `sa` join `learners` `l` on(`l`.`learner_id` = `sa`.`learner_id`)) join `post_class_report` `pcr` on(`pcr`.`report_id` = `sa`.`report_id`)) join `class_schedule` `cs` on(`cs`.`schedule_id` = `pcr`.`schedule_id`)) join `class` `c` on(`c`.`class_id` = `cs`.`class_id`)) ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`` SQL SECURITY DEFINER VIEW `vw_session_attendance_grades`  AS SELECT `sa`.`attendance_id` AS `attendance_id`, `sa`.`learner_id` AS `learner_id`, concat(`l`.`last_name`,', ',`l`.`first_name`) AS `learner_name`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `cs`.`schedule_id` AS `schedule_id`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `sa`.`status` AS `attendance_status`, `sa`.`session_rating` AS `session_rating`, `sa`.`remarks` AS `remarks`, `pcr`.`report_id` AS `report_id` FROM ((((`session_attendance` `sa` join `learners` `l` on(`l`.`learner_id` = `sa`.`learner_id`)) join `post_class_report` `pcr` on(`pcr`.`report_id` = `sa`.`report_id`)) join `class_schedule` `cs` on(`cs`.`schedule_id` = `pcr`.`schedule_id`)) join `class` `c` on(`c`.`class_id` = `cs`.`class_id`)) ;
 
 -- --------------------------------------------------------
 
@@ -1405,7 +1476,7 @@ CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_session_attendance_grad
 DROP TABLE IF EXISTS `vw_session_attendance_summary`;
 
 DROP VIEW IF EXISTS `vw_session_attendance_summary`;
-CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_session_attendance_summary`  AS SELECT `cs`.`schedule_id` AS `schedule_id`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `cs`.`status` AS `session_status`, count(`sa`.`attendance_id`) AS `total_recorded`, sum(case when `sa`.`status` = 'present' then 1 else 0 end) AS `present_count`, sum(case when `sa`.`status` = 'absent' then 1 else 0 end) AS `absent_count`, sum(case when `sa`.`status` = 'excused' then 1 else 0 end) AS `excused_count`, sum(case when `sa`.`status` = 'late' then 1 else 0 end) AS `late_count`, round(sum(case when `sa`.`status` = 'present' then 1 else 0 end) / nullif(count(`sa`.`attendance_id`),0) * 100,2) AS `attendance_rate_pct`, `pcr`.`report_id` AS `report_id`, `pcr`.`status` AS `report_status`, `pcr`.`admin_remarks` AS `admin_remarks`, concat(`t`.`first_name`,' ',`t`.`last_name`) AS `submitted_by_teacher`, `pcr`.`submission_timestamp` AS `submission_timestamp` FROM ((((`class_schedule` `cs` join `class` `c` on(`c`.`class_id` = `cs`.`class_id`)) left join `post_class_report` `pcr` on(`pcr`.`schedule_id` = `cs`.`schedule_id`)) left join `session_attendance` `sa` on(`sa`.`report_id` = `pcr`.`report_id`)) left join `teachers` `t` on(`t`.`teacher_id` = `pcr`.`submitted_by`)) GROUP BY `cs`.`schedule_id`, `c`.`class_id`, `c`.`class_title`, `cs`.`session_date`, `cs`.`start_time`, `cs`.`end_time`, `cs`.`venue`, `cs`.`status`, `pcr`.`report_id`, `pcr`.`status`, `pcr`.`admin_remarks`, `t`.`first_name`, `t`.`last_name`, `pcr`.`submission_timestamp` ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`` SQL SECURITY DEFINER VIEW `vw_session_attendance_summary`  AS SELECT `cs`.`schedule_id` AS `schedule_id`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `cs`.`status` AS `session_status`, count(`sa`.`attendance_id`) AS `total_recorded`, sum(case when `sa`.`status` = 'present' then 1 else 0 end) AS `present_count`, sum(case when `sa`.`status` = 'absent' then 1 else 0 end) AS `absent_count`, sum(case when `sa`.`status` = 'excused' then 1 else 0 end) AS `excused_count`, sum(case when `sa`.`status` = 'late' then 1 else 0 end) AS `late_count`, round(sum(case when `sa`.`status` = 'present' then 1 else 0 end) / nullif(count(`sa`.`attendance_id`),0) * 100,2) AS `attendance_rate_pct`, `pcr`.`report_id` AS `report_id`, `pcr`.`status` AS `report_status`, `pcr`.`admin_remarks` AS `admin_remarks`, concat(`t`.`first_name`,' ',`t`.`last_name`) AS `submitted_by_teacher`, `pcr`.`submission_timestamp` AS `submission_timestamp` FROM ((((`class_schedule` `cs` join `class` `c` on(`c`.`class_id` = `cs`.`class_id`)) left join `post_class_report` `pcr` on(`pcr`.`schedule_id` = `cs`.`schedule_id`)) left join `session_attendance` `sa` on(`sa`.`report_id` = `pcr`.`report_id`)) left join `teachers` `t` on(`t`.`teacher_id` = `pcr`.`submitted_by`)) GROUP BY `cs`.`schedule_id`, `c`.`class_id`, `c`.`class_title`, `cs`.`session_date`, `cs`.`start_time`, `cs`.`end_time`, `cs`.`venue`, `cs`.`status`, `pcr`.`report_id`, `pcr`.`status`, `pcr`.`admin_remarks`, `t`.`first_name`, `t`.`last_name`, `pcr`.`submission_timestamp` ;
 
 -- --------------------------------------------------------
 
@@ -1415,7 +1486,7 @@ CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_session_attendance_summ
 DROP TABLE IF EXISTS `vw_teacher_assigned_schedules`;
 
 DROP VIEW IF EXISTS `vw_teacher_assigned_schedules`;
-CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `vw_teacher_assigned_schedules`  AS SELECT `ct`.`teacher_id` AS `teacher_id`, concat(`t`.`first_name`,' ',`t`.`last_name`) AS `teacher_name`, `ct`.`assigned_role` AS `assigned_role`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `c`.`description` AS `description`, `c`.`status` AS `class_status`, `c`.`current_enrolled` AS `current_enrolled`, `c`.`max_capacity` AS `max_capacity`, `cs`.`schedule_id` AS `schedule_id`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `cs`.`status` AS `session_status` FROM (((`class_teacher` `ct` join `teachers` `t` on(`t`.`teacher_id` = `ct`.`teacher_id`)) join `class` `c` on(`c`.`class_id` = `ct`.`class_id`)) join `class_schedule` `cs` on(`cs`.`class_id` = `c`.`class_id`)) ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`` SQL SECURITY DEFINER VIEW `vw_teacher_assigned_schedules`  AS SELECT `ct`.`teacher_id` AS `teacher_id`, concat(`t`.`first_name`,' ',`t`.`last_name`) AS `teacher_name`, `ct`.`assigned_role` AS `assigned_role`, `c`.`class_id` AS `class_id`, `c`.`class_title` AS `class_title`, `c`.`description` AS `description`, `c`.`status` AS `class_status`, `c`.`current_enrolled` AS `current_enrolled`, `c`.`max_capacity` AS `max_capacity`, `cs`.`schedule_id` AS `schedule_id`, `cs`.`session_date` AS `session_date`, `cs`.`start_time` AS `start_time`, `cs`.`end_time` AS `end_time`, `cs`.`venue` AS `venue`, `cs`.`status` AS `session_status` FROM (((`class_teacher` `ct` join `teachers` `t` on(`t`.`teacher_id` = `ct`.`teacher_id`)) join `class` `c` on(`c`.`class_id` = `ct`.`class_id`)) join `class_schedule` `cs` on(`cs`.`class_id` = `c`.`class_id`)) ;
 
 --
 -- Indexes for dumped tables
@@ -1534,7 +1605,7 @@ ALTER TABLE `teachers`
 -- AUTO_INCREMENT for table `accounts`
 --
 ALTER TABLE `accounts`
-  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `administrators`
@@ -1552,25 +1623,25 @@ ALTER TABLE `barangays`
 -- AUTO_INCREMENT for table `class`
 --
 ALTER TABLE `class`
-  MODIFY `class_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `class_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `class_enrollments`
 --
 ALTER TABLE `class_enrollments`
-  MODIFY `enrollment_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `enrollment_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `class_schedule`
 --
 ALTER TABLE `class_schedule`
-  MODIFY `schedule_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `schedule_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `learners`
 --
 ALTER TABLE `learners`
-  MODIFY `learner_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `learner_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `municipalities`
@@ -1582,7 +1653,7 @@ ALTER TABLE `municipalities`
 -- AUTO_INCREMENT for table `post_class_report`
 --
 ALTER TABLE `post_class_report`
-  MODIFY `report_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `report_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `report_photos`
@@ -1600,13 +1671,13 @@ ALTER TABLE `roles`
 -- AUTO_INCREMENT for table `session_attendance`
 --
 ALTER TABLE `session_attendance`
-  MODIFY `attendance_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `attendance_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `teachers`
 --
 ALTER TABLE `teachers`
-  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- Constraints for dumped tables
