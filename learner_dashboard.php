@@ -5,6 +5,17 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $activePage = 'dashboard';
 $pageTitle  = 'Learner Dashboard — HandInHand';
+
+$toast_text = '';
+if (isset($_GET['profile_added'])) {
+    $toast_text = 'New learner profile created and set as your active profile.';
+} elseif (isset($_GET['profile_error'])) {
+    $toast_text = match ($_GET['profile_error']) {
+        'csrf'    => 'Session expired. Please reload the page and try again.',
+        'missing' => 'Please complete all required learner profile fields.',
+        default   => 'Could not add learner profile. Please check your inputs.',
+    };
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -14,11 +25,11 @@ $pageTitle  = 'Learner Dashboard — HandInHand';
 <body class="bg-[#F8F6F7] text-[#2D141E] min-h-screen lg:h-screen lg:overflow-hidden flex flex-col lg:flex-row overflow-x-hidden">
 
   <!-- Toast Notification Banner -->
-  <div id="toast-banner" role="status" aria-live="polite" class="hidden fixed bottom-5 right-5 z-[60] max-w-[92vw] sm:max-w-md bg-[#5B0F2B] text-white border border-[#E5B4C2]/35 px-4 py-3 rounded-2xl shadow-[0_18px_40px_rgba(26,5,13,0.34)] flex items-center gap-3 text-[12.5px] font-medium">
+  <div id="toast-banner" role="status" aria-live="polite" class="<?php echo $toast_text !== '' ? '' : 'hidden '; ?>fixed bottom-5 right-5 z-[60] max-w-[92vw] sm:max-w-md bg-[#5B0F2B] text-white border border-[#E5B4C2]/35 px-4 py-3 rounded-2xl shadow-[0_18px_40px_rgba(26,5,13,0.34)] flex items-center gap-3 text-[12.5px] font-medium">
     <span class="w-6 h-6 rounded-full bg-[#2E5D8A] text-white flex items-center justify-center shrink-0">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </span>
-    <span id="toast-message" class="leading-snug">Action completed.</span>
+    <span id="toast-message" class="leading-snug"><?php echo htmlspecialchars($toast_text !== '' ? $toast_text : 'Action completed.'); ?></span>
   </div>
 
   <!-- Shared Left Sidebar -->
@@ -117,5 +128,12 @@ $pageTitle  = 'Learner Dashboard — HandInHand';
 
   <!-- Front-End State & Interactive Controllers -->
   <script src="assets/js/learner.js"></script>
+  <?php if ($toast_text !== ''): ?>
+  <script>
+    setTimeout(() => {
+      document.getElementById('toast-banner')?.classList.add('hidden');
+    }, 4500);
+  </script>
+  <?php endif; ?>
 </body>
 </html>

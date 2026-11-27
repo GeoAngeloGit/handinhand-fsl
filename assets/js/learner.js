@@ -1623,3 +1623,65 @@ function renderClassesView() {
     .join('');
 }
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('addLearnerProfileModal');
+  const openBtn = document.getElementById('openNewLearnerProfileBtn');
+  const closeBtn = document.getElementById('closeAlpModalBtn');
+  const cancelBtn = document.getElementById('cancelAlpModalBtn');
+  const firstInput = document.getElementById('alpFirstName');
+  const lastInput = document.getElementById('alpLastName');
+  const initialsBadge = document.getElementById('alpInitialsPreview');
+  const muniSelect = document.getElementById('alpMunicipality');
+  const brgySelect = document.getElementById('alpBarangay');
+
+  function toggleAlpModal(show) {
+    if (!modal) return;
+    modal.classList.toggle('hidden', !show);
+    modal.setAttribute('aria-hidden', String(!show));
+  }
+
+  openBtn?.addEventListener('click', () => toggleAlpModal(true));
+  closeBtn?.addEventListener('click', () => toggleAlpModal(false));
+  cancelBtn?.addEventListener('click', () => toggleAlpModal(false));
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) toggleAlpModal(false);
+  });
+
+  function updateInitials() {
+    if (!initialsBadge) return;
+    const f = (firstInput?.value.trim() || '')[0] || '';
+    const l = (lastInput?.value.trim() || '')[0] || '';
+    initialsBadge.textContent = (f + l).toUpperCase() || '+';
+  }
+  firstInput?.addEventListener('input', updateInitials);
+  lastInput?.addEventListener('input', updateInitials);
+
+  const allBarangays =
+    (typeof learnerState !== 'undefined' && Array.isArray(learnerState.barangays))
+      ? learnerState.barangays
+      : (window.learnerState && Array.isArray(window.learnerState.barangays) ? window.learnerState.barangays : []);
+
+  if (muniSelect && brgySelect && allBarangays.length > 0) {
+    const municipalities = [...new Set(allBarangays.map((b) => b.municipality_name))].sort();
+    municipalities.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      muniSelect.appendChild(opt);
+    });
+
+    muniSelect.addEventListener('change', () => {
+      const chosenMuni = muniSelect.value;
+      brgySelect.innerHTML = '<option value="">Select Barangay...</option>';
+      allBarangays
+        .filter((b) => b.municipality_name === chosenMuni)
+        .forEach((b) => {
+          const opt = document.createElement('option');
+          opt.value = b.barangay_id;
+          opt.textContent = b.barangay_name;
+          brgySelect.appendChild(opt);
+        });
+    });
+  }
+});

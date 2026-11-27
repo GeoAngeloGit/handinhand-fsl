@@ -201,3 +201,173 @@
     </div>
   </div>
 </div>
+
+<!-- ==================== MODAL: ADD NEW LEARNER PROFILE ==================== -->
+
+<?php
+$alp_municipalities = [];
+$alp_barangays_by_muni = [];
+
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    @require_once __DIR__ . '/db_connect.php';
+}
+
+if (isset($conn) && $conn instanceof mysqli) {
+    try {
+        $res = $conn->query("
+            SELECT b.barangay_id, b.barangay_name, m.municipality_name
+            FROM barangays b
+            JOIN municipalities m ON m.municipality_id = b.municipality_id
+            ORDER BY m.municipality_name ASC, b.barangay_name ASC
+        ");
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $muni = (string)$row['municipality_name'];
+                $alp_municipalities[$muni] = true;
+                $alp_barangays_by_muni[$muni][] = [
+                    'id'   => (int)$row['barangay_id'],
+                    'name' => (string)$row['barangay_name'],
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('Modal barangays query error: ' . $e->getMessage());
+    }
+}
+?>
+<div id="addLearnerProfileModal" aria-hidden="true" class="hidden fixed inset-0 z-50 bg-[#1A050D]/55 backdrop-blur-xs flex items-center justify-center p-4">
+  <div role="dialog" aria-modal="true" aria-labelledby="alpModalTitle" class="w-full max-w-[520px] max-h-[92vh] overflow-y-auto bg-white rounded-[22px] p-6 shadow-[0_24px_60px_rgba(26,5,13,0.32)]">
+
+    <!-- Modal Header -->
+    <div class="flex items-center justify-between gap-3 pb-4 mb-3.5 border-b border-[#5B0F2B]/[0.08]">
+      <div class="flex items-center gap-3">
+        <div id="alpInitialsPreview" class="w-10 h-10 rounded-full bg-[#2E5D8A] text-white font-bold text-[14px] flex items-center justify-center shrink-0">
+          +
+        </div>
+        <div>
+          <span class="block text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#2E5D8A]">
+            NEW LEARNER PROFILE &bull; <?php echo sprintf('ACC-%03d', (int)($_SESSION['account_id'] ?? 0)); ?>
+          </span>
+          <h2 id="alpModalTitle" class="font-display font-bold text-[20px] leading-tight text-[#5B0F2B]">
+            Add New Learner
+          </h2>
+        </div>
+      </div>
+      <button type="button" id="closeAlpModalBtn" aria-label="Close" class="w-8 h-8 rounded-full bg-[#F8F6F7] hover:bg-[#F7ECEF] border border-[#5B0F2B]/10 text-[#5B0F2B] text-lg flex items-center justify-center cursor-pointer">
+        &times;
+      </button>
+    </div>
+
+    <!-- Form -->
+    <form action="actions/learner_add_profile.php" method="POST" id="addLearnerProfileForm" class="flex flex-col gap-2">
+      <?php if (function_exists('csrf_field')) echo csrf_field(); ?>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2.5">
+        <span class="text-[12px] font-medium text-[#7D6570]">Account ID</span>
+        <span class="text-[12.5px] font-bold text-[#2D141E]"><?php echo sprintf('ACC-%03d', (int)($_SESSION['account_id'] ?? 0)); ?></span>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpFirstName" class="text-[12px] font-medium text-[#7D6570] shrink-0">First Name</label>
+        <input type="text" id="alpFirstName" name="first_name" placeholder="Enter first name" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpMiddleName" class="text-[12px] font-medium text-[#7D6570] shrink-0">Middle Name</label>
+        <input type="text" id="alpMiddleName" name="middle_name" placeholder="Optional" class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpLastName" class="text-[12px] font-medium text-[#7D6570] shrink-0">Last Name</label>
+        <input type="text" id="alpLastName" name="last_name" placeholder="Enter last name" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpBirthdate" class="text-[12px] font-medium text-[#7D6570] shrink-0">Birthdate</label>
+        <input type="date" id="alpBirthdate" name="birth_date" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpContact" class="text-[12px] font-medium text-[#7D6570] shrink-0">Contact Number</label>
+        <input type="tel" id="alpContact" name="contact_number" placeholder="09XXXXXXXXX" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpGender" class="text-[12px] font-medium text-[#7D6570] shrink-0">Gender</label>
+        <select id="alpGender" name="gender" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Non-binary">Non-binary</option>
+          <option value="Prefer not to say">Prefer not to say</option>
+        </select>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpHearing" class="text-[12px] font-medium text-[#7D6570] shrink-0">Hearing Status</label>
+        <select id="alpHearing" name="hearing_status" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+          <option value="Deaf">Deaf</option>
+          <option value="Hard of Hearing">Hard of Hearing</option>
+          <option value="Hearing">Hearing</option>
+        </select>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpSpeech" class="text-[12px] font-medium text-[#7D6570] shrink-0">Speech Status</label>
+        <select id="alpSpeech" name="speech_status" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+          <option value="Non-verbal">Non-verbal</option>
+          <option value="Limited Verbal">Limited Verbal</option>
+          <option value="Verbal">Verbal</option>
+        </select>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpMunicipality" class="text-[12px] font-medium text-[#7D6570] shrink-0">City / Municipality</label>
+        <select id="alpMunicipality" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+          <option value="">Select City / Municipality...</option>
+          <?php foreach (array_keys($alp_municipalities) as $muni_name): ?>
+            <option value="<?php echo htmlspecialchars($muni_name, ENT_QUOTES); ?>">
+              <?php echo htmlspecialchars($muni_name); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] rounded-xl px-3.5 py-2">
+        <label for="alpBarangay" class="text-[12px] font-medium text-[#7D6570] shrink-0">Barangay</label>
+        <select id="alpBarangay" name="barangay_id" required class="w-[62%] text-right text-[12.5px] font-bold text-[#2D141E] bg-transparent focus:bg-white border border-transparent focus:border-[#5B0F2B]/25 rounded-lg px-2 py-1 outline-none">
+          <option value="">Select Barangay...</option>
+        </select>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-4 mt-2 border-t border-[#5B0F2B]/[0.08]">
+        <button type="button" id="cancelAlpModalBtn" class="px-4 py-2 rounded-full border border-[#5B0F2B]/15 bg-white hover:bg-[#F8F6F7] text-[#5B0F2B] text-[12px] font-bold cursor-pointer">
+          Cancel
+        </button>
+        <button type="submit" class="px-5 py-2 rounded-full bg-[#5B0F2B] hover:bg-[#8D2645] text-white text-[12px] font-bold cursor-pointer transition-colors">
+          Save Learner Profile
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  const barangaysByMuni = <?php echo json_encode($alp_barangays_by_muni, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?: '{}'; ?>;
+  const muniSelect = document.getElementById('alpMunicipality');
+  const brgySelect = document.getElementById('alpBarangay');
+
+  if (!muniSelect || !brgySelect) return;
+
+  muniSelect.addEventListener('change', function () {
+    const list = barangaysByMuni[this.value] || [];
+    brgySelect.innerHTML = '<option value="">Select Barangay...</option>';
+    list.forEach(function (b) {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = b.name;
+      brgySelect.appendChild(opt);
+    });
+  });
+})();
+</script>

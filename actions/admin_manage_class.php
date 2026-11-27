@@ -137,8 +137,7 @@ try {
             out(false, 'Unknown action.', 400);
     }
 } catch (mysqli_sql_exception $e) {
-    if ($conn->in_transaction) $conn->rollback();
-    if ($e->getCode() === 1062) {
+     if ($e->getCode() === 1062) {
         out(false, 'That person is already assigned or enrolled in this class.', 409);
     }
     error_log('admin_manage_class failed: ' . $e->getMessage());

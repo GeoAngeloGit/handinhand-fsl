@@ -72,6 +72,14 @@ function navClasses(string $page, string $current): string {
   <div class="pt-3 flex flex-col gap-2.5">
     <div class="w-full rounded-2xl bg-white/[0.06] border border-white/[0.10] p-2.5 flex flex-col gap-1.5">
       <span id="switch-user-account-label" class="text-[9px] font-bold uppercase tracking-[0.10em] text-white/55 px-1 tabular-code">SWITCH USER</span>
+      <button
+        type="button"
+        id="openNewLearnerProfileBtn"
+        class="mt-2 w-full py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+      >
+        <span class="text-[13px] leading-none">+</span>
+        <span>Add New Learner</span>
+      </button>
       <select id="learner-switcher" onchange="switchActiveLearner(this.value)" aria-label="Switch learner profile" class="sidebar-select w-full h-[32px] rounded-xl bg-white/[0.10] hover:bg-white/[0.16] border border-white/[0.14] px-2.5 text-[11.5px] font-semibold text-white focus:outline-none cursor-pointer truncate"></select>
     </div>
 
