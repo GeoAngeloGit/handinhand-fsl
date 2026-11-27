@@ -564,6 +564,6 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 <script>
 window.ROSTERS_BY_CLASS = <?php echo json_encode($rosters_by_class, JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/teacher.js?v=2"></script>
+<script src="assets/js/teacher.js?v=3"></script>
 </body>
 </html>

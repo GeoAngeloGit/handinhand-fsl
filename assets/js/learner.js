@@ -1361,7 +1361,7 @@ function renderGradesView() {
                             ${escapeHtml(sg.session_date || '—')} • ${escapeHtml(sg.start_time || '')}
                           </td>
                           <td class="py-2.5 px-3 whitespace-nowrap">
-                            ${getGradePillHtml(sg.grade_status, 'sm')}
+                            ${getGradePillHtml(sg.session_rating, 'sm')}
                           </td>
                           <td class="py-2.5 px-3 text-[#6D4C57]">
                             ${escapeHtml(sg.remarks || 'No additional remarks.')}

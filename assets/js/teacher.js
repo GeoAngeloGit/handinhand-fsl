@@ -445,7 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </select>
                             <select name="grade[${stu.learner_id}]" class="rpt-stu-select grade-select">
                                 <option value="Satisfactory" selected>Satisfactory</option>
-                                <option value="Needs Improvement">Needs Improvement</option>
+                                <option value="Needs Practice">Needs Practice</option>
                                 <option value="Unsatisfactory">Unsatisfactory</option>
                             </select>
                         </div>
@@ -577,6 +577,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         reportCards.forEach(card => {
             card.addEventListener('click', () => openViewReportModal(card));
+        });
+
+        
+        document.querySelectorAll('.btn-revise-report').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (schedSelect) {
+                    schedSelect.value = btn.dataset.scheduleId;
+                    renderStudentsForSchedule();
+                }
+                openMakeModal();
+            });
         });
 
         if (closeViewBtn) closeViewBtn.addEventListener('click', closeViewReportModal);

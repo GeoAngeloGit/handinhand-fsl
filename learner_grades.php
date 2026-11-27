@@ -92,6 +92,6 @@ $pageTitle  = 'My Grades — HandInHand | Albay Province';
   <?php include __DIR__ . '/includes/learner_modals.php'; ?>
 
   <!-- Front-End State & Interactive Controllers -->
-  <script src="assets/js/learner.js"></script>
+  <script src="assets/js/learner.js?v=2"></script>
 </body>
 </html>
