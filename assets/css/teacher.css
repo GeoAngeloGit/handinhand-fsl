@@ -1288,9 +1288,18 @@ a {
     border: 1px solid var(--border-soft);
     background: var(--surface-muted);
     color: var(--text-dark);
-    font-size: 1.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cls-modal-close:hover {
+    background: #F4E7EB;
+    color: var(--maroon-deep);
 }
 
 .cls-overview-box {
@@ -2281,4 +2290,63 @@ a {
     .rpt-cards-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ==================== TEACHER PROFILE MODAL & SIDEBAR TRIGGER ==================== */
+.sidebar-footer .profile-card {
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.sidebar-footer .profile-card:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.24);
+}
+
+.tp-modal-card {
+    max-width: 520px;
+}
+
+.tp-modal-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background-color: #2B6CB0;
+    color: #FFFFFF;
+    font-size: 0.9rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tp-modal-card .cls-row-val {
+    color: var(--text-dark);
+}
+
+/* ==================== EDITABLE TEACHER PROFILE INPUTS ==================== */
+.tp-pill-input {
+    width: 60%;
+    text-align: right;
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 5px 9px;
+    outline: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.tp-pill-input:hover {
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: var(--border-soft);
+}
+
+.tp-pill-input:focus {
+    background-color: #FFFFFF;
+    border-color: var(--berry-accent);
 }

@@ -247,7 +247,7 @@ $active_classes = array_values(array_filter($all_classes, fn($c) => $c['status']
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/teacher.css?v=3">
+    <link rel="stylesheet" href="assets/css/teacher.css?v=8">
 </head>
 <body>
 
@@ -664,6 +664,6 @@ $active_classes = array_values(array_filter($all_classes, fn($c) => $c['status']
 
 <script src="assets/js/teacher.js?v=1"></script>
 
-
+<?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>
 </body>
 </html>

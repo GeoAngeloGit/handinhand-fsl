@@ -196,7 +196,7 @@ $inactive_lrn_cnt   = $total_learners_cnt - $active_lrn_cnt;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/teacher.css?v=5">
+    <link rel="stylesheet" href="assets/css/teacher.css?v=8">
 </head>
 <body>
 
@@ -501,6 +501,8 @@ $inactive_lrn_cnt   = $total_learners_cnt - $active_lrn_cnt;
 </div>
 
 <script src="assets/js/teacher.js?v=1"></script>
+
+<?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>
 
 </body>
 </html>

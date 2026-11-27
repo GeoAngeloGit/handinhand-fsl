@@ -229,7 +229,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/teacher.css?v=7">
+    <link rel="stylesheet" href="assets/css/teacher.css?v=8">
 </head>
 <body>
 
@@ -565,5 +565,8 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 window.ROSTERS_BY_CLASS = <?php echo json_encode($rosters_by_class, JSON_UNESCAPED_UNICODE); ?>;
 </script>
 <script src="assets/js/teacher.js?v=3"></script>
+
+<?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>
+
 </body>
 </html>
