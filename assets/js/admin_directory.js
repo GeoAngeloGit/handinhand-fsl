@@ -280,16 +280,46 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-    if (modalDeleteBtn) {
-        modalDeleteBtn.addEventListener('click', () => {
-            if (!currentDataRef || !currentCardRef) return;
-            const confirmed = window.confirm(`Remove inactive user ${currentDataRef.full_name} (${currentDataRef.code}) from directory?`);
+// ==================== DELETE USER (PERSISTED TO MYSQL) ====================
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            if (!activeUser || !activeCard) return;
+
+            const confirmed = confirm(
+                `Delete ${activeUser.full_name} (${activeUser.display_code})?\n\nIf this user has historical class or grade records, their account will be set to Inactive instead.`
+            );
             if (!confirmed) return;
-            currentCardRef.remove();
-            closeProfileModal();
+
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+
+            try {
+                const res = await fetch('actions/admin_delete_user.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        csrf_token: csrfToken,
+                        account_id: activeUser.account_id,
+                        role_type: activeUser.role_type
+                    })
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.ok) {
+                    alert(data.message || 'Could not delete user.');
+                    return;
+                }
+
+                closeModal();
+                window.location.reload();
+            } catch (err) {
+                alert('Network error while deleting user.');
+            } finally {
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = 'Delete User';
+            }
         });
     }
-
     // ==================== + NEW ADMIN ACCOUNT MODAL ====================
     const newAdminModal = document.getElementById('newAdminModal');
     const closeNewAdminBtn = document.getElementById('closeNewAdminModalBtn');

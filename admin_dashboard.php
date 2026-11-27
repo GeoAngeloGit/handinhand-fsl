@@ -335,6 +335,28 @@ foreach ($upcoming_classes as $uc) {
             <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Menu">&#9776;</button>
         </header>
 
+        <!-- URL Feedback Banner -->
+        <?php if (isset($_GET['admin_created'])): ?>
+            <div class="alert-banner alert-success" id="dirAlertBanner">
+                <span>New administrator account created and added to the directory.</span>
+                <button type="button" onclick="this.parentElement.remove()">&times;</button>
+            </div>
+        <?php elseif (isset($_GET['admin_error'])): ?>
+            <div class="alert-banner alert-error" id="dirAlertBanner">
+                <span>
+                    <?php
+                    echo match ($_GET['admin_error']) {
+                        'csrf'      => 'Session expired. Please reload the page and try again.',
+                        'missing'   => 'Please fill in all required administrator fields.',
+                        'password'  => 'Password must be at least 8 characters long.',
+                        'duplicate' => 'That email address or username is already registered.',
+                        default     => 'Could not create administrator account. Please try again.',
+                    };
+                    ?>
+                </span>
+                <button type="button" onclick="this.parentElement.remove()">&times;</button>
+            </div>
+        <?php endif; ?>
         <!-- Welcome Banner -->
         <section class="welcome-banner">
             <h2>Welcome, <em><?php echo htmlspecialchars(strtoupper($admin_username)); ?></em></h2>
