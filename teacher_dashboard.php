@@ -469,6 +469,7 @@ $sup_pct = $total_evaluated > 0 ? max(0, 100 - $sat_pct - $dev_pct) : 0;
     </main>
 </div>
 
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.getElementById('teacherSidebar');

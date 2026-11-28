@@ -7,9 +7,7 @@ if (!defined('ROLE_ADMIN')) {
     define('ROLE_ADMIN', 1);
 }
 
-if (!empty($_SESSION['logged_in']) && function_exists('require_login')) {
-    require_login([ROLE_ADMIN]);
-}
+require_login([ROLE_ADMIN]);
 
 $current_account_id = (int)($_SESSION['account_id'] ?? 0);
 $coordinator_name   = 'Albay Coordinator';
@@ -74,8 +72,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $lrn_code  = sprintf('LRN-%05d', $lid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
 
-                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
-                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+                $is_active_flag = isset($r['is_active']) ? ((int)$r['is_active'] === 1) : (strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active')) !== 'inactive');
+                $status     = $is_active_flag ? 'Active' : 'Inactive';
 
                 $brgy = $r['barangay_name'] ?? '';
                 $muni = $r['municipality_name'] ?? '';
@@ -125,8 +123,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $tch_code  = sprintf('TCH-%05d', $tid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
 
-                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
-                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+                $is_active_flag = isset($r['is_active']) ? ((int)$r['is_active'] === 1) : (strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active')) !== 'inactive');
+                $status     = $is_active_flag ? 'Active' : 'Inactive';
 
                 $teachers_list[] = [
                     'raw_id'         => $tid,
@@ -170,8 +168,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $adm_code  = sprintf('ADM-%05d', $aid);
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
 
-                $raw_status = strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active'));
-                $status     = ($raw_status === 'inactive') ? 'Inactive' : 'Active';
+                $is_active_flag = isset($r['is_active']) ? ((int)$r['is_active'] === 1) : (strtolower((string)($r['account_status'] ?? $r['status'] ?? 'active')) !== 'inactive');
+                $status     = $is_active_flag ? 'Active' : 'Inactive';
 
                 $raw_user  = (string)($r['username'] ?? '');
                 $uname     = $raw_user !== '' ? (str_starts_with($raw_user, '@') ? $raw_user : '@' . $raw_user) : '—';
@@ -316,6 +314,32 @@ function count_active_inactive(array $rows): array {
             </div>
             <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Menu">&#9776;</button>
         </header>
+
+        <?php
+        $admin_flash_msg  = '';
+        $admin_flash_type = 'success';
+        if (!empty($_GET['admin_created'])) {
+            $admin_flash_msg = 'New administrator account created successfully.';
+        } elseif (!empty($_GET['admin_error'])) {
+            $admin_flash_type = 'error';
+            $err_map = [
+                'csrf'          => 'Session expired. Please reload the page and try again.',
+                'missing'       => 'Please fill out all required administrator fields.',
+                'username_long' => 'Username must be 30 characters or fewer.',
+                'email'         => 'Please enter a valid email address.',
+                'contact'       => 'Please enter a valid contact number (7–20 digits).',
+                'password'      => 'Temporary password must be at least 8 characters.',
+                'duplicate'     => 'That username or email is already registered.',
+                'server'        => 'Could not create administrator account. Please try again.',
+            ];
+            $admin_flash_msg = $err_map[(string)$_GET['admin_error']] ?? 'Could not create administrator account.';
+        }
+        ?>
+        <?php if ($admin_flash_msg !== ''): ?>
+            <div style="margin-bottom: 14px; padding: 10px 14px; border-radius: 10px; font-size: 0.78rem; font-weight: 600; <?php echo $admin_flash_type === 'error' ? 'background:#fdecea;color:#8e1b2d;border:1px solid #f5c6cb;' : 'background:#eaf6ee;color:#1b6b3a;border:1px solid #c3e6cb;'; ?>">
+                <?php echo htmlspecialchars($admin_flash_msg); ?>
+            </div>
+        <?php endif; ?>
 
         <!-- Unified Top Control Card -->
         <section class="dir-control-card">
@@ -726,7 +750,8 @@ function count_active_inactive(array $rows): array {
     </div>
 </div>
 
-<script src="assets/js/admin_directory.js?v=2"></script>
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
+<script src="assets/js/admin_directory.js?v=3"></script>
 
 </body>
 </html>

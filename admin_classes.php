@@ -7,9 +7,7 @@ if (!defined('ROLE_ADMIN')) {
     define('ROLE_ADMIN', 1);
 }
 
-if (!empty($_SESSION['logged_in']) && function_exists('require_login')) {
-    require_login([ROLE_ADMIN]);
-}
+require_login([ROLE_ADMIN]);
 
 $current_account_id = (int)($_SESSION['account_id'] ?? 0);
 $coordinator_name   = 'Albay Coordinator';
@@ -63,10 +61,11 @@ if (isset($conn) && $conn instanceof mysqli) {
     // 2. Active Teachers
     try {
         $res = $conn->query("
-            SELECT teacher_id, first_name, middle_name, last_name, specialization
-            FROM teachers
-            WHERE COALESCE(account_status, 'active') = 'active'
-            ORDER BY last_name ASC, first_name ASC
+            SELECT t.teacher_id, t.first_name, t.middle_name, t.last_name, t.specialization
+            FROM teachers t
+            JOIN accounts a ON a.account_id = t.account_id
+            WHERE t.is_active = 1
+            ORDER BY t.last_name ASC, t.first_name ASC
         ");
         while ($r = $res->fetch_assoc()) {
             $mid = !empty($r['middle_name']) ? ' ' . strtoupper(substr(trim((string)$r['middle_name']), 0, 1)) . '.' : '';
@@ -85,7 +84,7 @@ if (isset($conn) && $conn instanceof mysqli) {
         $res = $conn->query("
             SELECT learner_id, first_name, middle_name, last_name, hearing_status
             FROM learners
-            WHERE COALESCE(account_status, 'active') = 'active'
+            WHERE is_active = 1
             ORDER BY last_name ASC, first_name ASC
         ");
         while ($r = $res->fetch_assoc()) {
@@ -104,13 +103,8 @@ if (isset($conn) && $conn instanceof mysqli) {
     // 4. Classes + Schedules + Assigned Teachers + Enrolled Learners
     try {
         $sql_classes = "
-            SELECT 
-                c.*,
-                b.barangay_name,
-                m.municipality_name
-            FROM classes c
-            LEFT JOIN barangays b ON b.barangay_id = c.barangay_id
-            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
+            SELECT c.*
+            FROM class c
             ORDER BY c.class_id DESC
         ";
         $res = $conn->query($sql_classes);
@@ -120,8 +114,8 @@ if (isset($conn) && $conn instanceof mysqli) {
             // Fetch Schedules
             $schedules = [];
             $s_stmt = $conn->prepare("
-                SELECT schedule_id, session_date, start_time, end_time, room_location
-                FROM class_schedules
+                SELECT schedule_id, session_date, start_time, end_time, venue, status, remarks
+                FROM class_schedule
                 WHERE class_id = ?
                 ORDER BY session_date ASC, start_time ASC
             ");
@@ -136,7 +130,10 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'start_time'    => $sr['start_time'],
                     'end_time'      => $sr['end_time'],
                     'time_label'    => date('g:i A', strtotime($sr['start_time'])) . (!empty($sr['end_time']) ? ' – ' . date('g:i A', strtotime($sr['end_time'])) : ''),
-                    'room_location' => $sr['room_location'] ?? ''
+                    'venue'         => $sr['venue'] ?? '',
+                    'room_location' => $sr['venue'] ?? '',
+                    'status'        => $sr['status'] ?? 'scheduled',
+                    'remarks'       => $sr['remarks'] ?? ''
                 ];
             }
             $s_stmt->close();
@@ -144,11 +141,11 @@ if (isset($conn) && $conn instanceof mysqli) {
             // Fetch Assigned Teachers
             $assigned_teachers = [];
             $t_stmt = $conn->prepare("
-                SELECT ct.teacher_id, ct.role, t.first_name, t.middle_name, t.last_name, t.specialization
+                SELECT ct.teacher_id, ct.assigned_role, t.first_name, t.middle_name, t.last_name, t.specialization
                 FROM class_teacher ct
                 JOIN teachers t ON t.teacher_id = ct.teacher_id
                 WHERE ct.class_id = ?
-                ORDER BY FIELD(ct.role, 'Lead Instructor', 'Lead', 'Co-teacher', 'Assistant', 'Substitute'), t.last_name ASC
+                ORDER BY FIELD(ct.assigned_role, 'Lead Instructor', 'Co-Teacher', 'Substitute'), t.last_name ASC
             ");
             if ($t_stmt) {
                 $t_stmt->bind_param('i', $cid);
@@ -160,34 +157,33 @@ if (isset($conn) && $conn instanceof mysqli) {
                         'teacher_id'     => (int)$tr['teacher_id'],
                         'code'           => sprintf('TCH-%05d', (int)$tr['teacher_id']),
                         'full_name'      => trim($tr['first_name'] . $mid . ' ' . $tr['last_name']),
-                        'role'           => $tr['role'] ?? 'Lead Instructor',
+                        'role'           => $tr['assigned_role'] ?? 'Lead Instructor',
                         'specialization' => $tr['specialization'] ?? ''
                     ];
                 }
                 $t_stmt->close();
             }
 
-            // Fetch Enrolled Learners
+            // Fetch Enrolled Learners via vw_class_enrolled_rosters + class_enrollments status
             $enrolled_learners = [];
             $e_stmt = $conn->prepare("
-                SELECT ce.enrollment_id, ce.learner_id, ce.status, ce.enrolled_at,
-                       l.first_name, l.middle_name, l.last_name, l.hearing_status
+                SELECT ce.enrollment_id, ce.learner_id, ce.status, ce.enrollment_date,
+                       r.full_name, r.hearing_status
                 FROM class_enrollments ce
-                JOIN learners l ON l.learner_id = ce.learner_id
-                WHERE ce.class_id = ?
-                ORDER BY l.last_name ASC, l.first_name ASC
+                JOIN vw_class_enrolled_rosters r ON r.class_id = ce.class_id AND r.learner_id = ce.learner_id
+                WHERE ce.class_id = ? AND ce.status = 'enrolled'
+                ORDER BY r.full_name ASC
             ");
             if ($e_stmt) {
                 $e_stmt->bind_param('i', $cid);
                 $e_stmt->execute();
                 $e_res = $e_stmt->get_result();
                 while ($er = $e_res->fetch_assoc()) {
-                    $mid = !empty($er['middle_name']) ? ' ' . strtoupper(substr(trim((string)$er['middle_name']), 0, 1)) . '.' : '';
                     $enrolled_learners[] = [
                         'enrollment_id'  => (int)$er['enrollment_id'],
                         'learner_id'     => (int)$er['learner_id'],
                         'code'           => sprintf('LRN-%05d', (int)$er['learner_id']),
-                        'full_name'      => trim($er['last_name'] . ', ' . $er['first_name'] . $mid),
+                        'full_name'      => $er['full_name'],
                         'hearing_status' => $er['hearing_status'] ?? 'Unspecified',
                         'status'         => ucfirst(strtolower((string)($er['status'] ?? 'enrolled')))
                     ];
@@ -195,12 +191,11 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $e_stmt->close();
             }
 
-            $brgy = $c['barangay_name'] ?? '';
-            $muni = $c['municipality_name'] ?? '';
-            $hub_label = $brgy ? "Brgy. {$brgy}" . ($muni ? ", {$muni}" : '') : ($muni ?: 'Albay Hub');
+            $hub_label = !empty($schedules[0]['venue']) ? $schedules[0]['venue'] : 'TBA Venue';
 
             $raw_status = strtolower((string)($c['status'] ?? 'open'));
             $status_label = match ($raw_status) {
+                'draft'     => 'Draft',
                 'ongoing'   => 'Ongoing',
                 'completed' => 'Completed',
                 'cancelled' => 'Cancelled',
@@ -223,11 +218,9 @@ if (isset($conn) && $conn instanceof mysqli) {
                 'code'              => sprintf('CLS-%04d', $cid),
                 'title'             => $c['class_title'] ?? 'Untitled Class',
                 'description'       => $c['description'] ?? '',
-                'skill_level'       => $c['skill_level'] ?? 'Beginner',
-                'barangay_id'       => (int)($c['barangay_id'] ?? 0),
                 'hub_label'         => $hub_label,
                 'max_capacity'      => (int)($c['max_capacity'] ?? 20),
-                'enrolled_count'    => count($enrolled_learners),
+                'enrolled_count'    => (int)($c['current_enrolled'] ?? count($enrolled_learners)),
                 'status'            => $status_label,
                 'lead_teacher'      => $lead_name,
                 'schedules'         => $schedules,
@@ -436,16 +429,6 @@ foreach ($classes_list as $cl) {
                         <input type="text" id="classSearchInput" placeholder="Search class, hub, or teacher...">
                     </div>
 
-                    <div class="dir-sort-group">
-                        <span class="dir-sort-label">LEVEL</span>
-                        <select id="classLevelFilter">
-                            <option value="ALL">All Levels</option>
-                            <option value="Beginner">Beginner</option>
-                            <option value="Intermediate">Intermediate</option>
-                            <option value="Advanced">Advanced</option>
-                        </select>
-                    </div>
-
                     <div class="dir-status-pills" role="group" aria-label="Class Status Filter">
                         <button type="button" class="status-pill-btn active" data-status="ALL">All</button>
                         <button type="button" class="status-pill-btn" data-status="Open">Open</button>
@@ -459,8 +442,8 @@ foreach ($classes_list as $cl) {
         <!-- Table Header -->
         <div class="dir-table-header cls-grid-layout">
             <span class="col-head-active">CLASS ID</span>
-            <span>CLASS TITLE &amp; LEVEL</span>
-            <span>BARANGAY HUB</span>
+            <span>CLASS TITLE</span>
+            <span>VENUE</span>
             <span>LEAD EDUCATOR</span>
             <span>NEXT SCHEDULE</span>
             <span>CAPACITY</span>
@@ -492,7 +475,6 @@ foreach ($classes_list as $cl) {
                     ?>
                     <article class="dir-row-card cls-grid-layout <?php echo $accent_class; ?>"
                              data-search="<?php echo htmlspecialchars(strtolower($cls['code'] . ' ' . $cls['title'] . ' ' . $cls['hub_label'] . ' ' . $cls['lead_teacher'])); ?>"
-                             data-level="<?php echo htmlspecialchars($cls['skill_level']); ?>"
                              data-status="<?php echo htmlspecialchars($cls['status']); ?>"
                              data-class="<?php echo $payload_json; ?>">
 
@@ -502,7 +484,7 @@ foreach ($classes_list as $cl) {
 
                         <div class="dir-contact-stack">
                             <strong><?php echo htmlspecialchars($cls['title']); ?></strong>
-                            <span><?php echo htmlspecialchars($cls['skill_level']); ?> Level</span>
+                            <span><?php echo htmlspecialchars(mb_strimwidth((string)$cls['description'], 0, 48, '…') ?: 'FSL Class'); ?></span>
                         </div>
 
                         <div class="dir-muted-text"><?php echo htmlspecialchars($cls['hub_label']); ?></div>
@@ -564,29 +546,6 @@ foreach ($classes_list as $cl) {
 
                 <div class="roster-grid-2">
                     <div class="roster-field">
-                        <label for="ccBarangay">Barangay Hub (Albay) <span class="req-star">*</span></label>
-                        <select id="ccBarangay" name="barangay_id" required>
-                            <option value="">— Select Barangay Hub —</option>
-                            <?php foreach ($barangays_list as $b): ?>
-                                <option value="<?php echo (int)$b['barangay_id']; ?>">
-                                    <?php echo htmlspecialchars($b['municipality_name'] . ' — Brgy. ' . $b['barangay_name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="roster-field">
-                        <label for="ccSkillLevel">Skill Level <span class="req-star">*</span></label>
-                        <select id="ccSkillLevel" name="skill_level" required>
-                            <option value="Beginner">Beginner</option>
-                            <option value="Intermediate">Intermediate</option>
-                            <option value="Advanced">Advanced</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="roster-grid-2">
-                    <div class="roster-field">
                         <label for="ccCapacity">Max Capacity <span class="req-star">*</span></label>
                         <input type="number" id="ccCapacity" name="max_capacity" value="20" min="1" max="100" required>
                     </div>
@@ -595,6 +554,7 @@ foreach ($classes_list as $cl) {
                         <label for="ccStatus">Status <span class="req-star">*</span></label>
                         <select id="ccStatus" name="status" required>
                             <option value="Open">Open (accepting learners)</option>
+                            <option value="Draft">Draft</option>
                             <option value="Ongoing">Ongoing (in session)</option>
                             <option value="Completed">Completed</option>
                         </select>
@@ -617,7 +577,7 @@ foreach ($classes_list as $cl) {
 
                             <select name="teacher_roles[]" required>
                                 <option value="Lead Instructor">Lead Instructor</option>
-                                <option value="Co-teacher">Co-teacher</option>
+                                <option value="Co-Teacher">Co-Teacher</option>
                                 <option value="Substitute">Substitute</option>
                             </select>
 
@@ -700,39 +660,112 @@ foreach ($classes_list as $cl) {
 
         <!-- Sub-Tab 1: Overview & Status -->
         <div class="mc-pane" id="mcPane-overview">
-            <div class="modal-fields-stack">
-                <div class="modal-field-row">
-                    <span class="modal-field-label">Barangay Hub</span>
-                    <span class="modal-field-value" id="mcHubLabel">—</span>
+            <div id="mcOverviewView">
+                <div class="modal-fields-stack">
+                    <div class="modal-field-row">
+                        <span class="modal-field-label">Primary Venue</span>
+                        <span class="modal-field-value" id="mcHubLabel">—</span>
+                    </div>
+                    <div class="modal-field-row">
+                        <span class="modal-field-label">Lead Educator</span>
+                        <span class="modal-field-value" id="mcLeadTeacher">—</span>
+                    </div>
+                    <div class="modal-field-row">
+                        <span class="modal-field-label">Enrollment Capacity</span>
+                        <span class="modal-field-value" id="mcCapacityLabel">0 / 20 Seats</span>
+                    </div>
+                    <div class="modal-field-row">
+                        <span class="modal-field-label">Description</span>
+                        <span class="modal-field-value" id="mcDescLabel">—</span>
+                    </div>
+                    <div class="modal-field-row">
+                        <span class="modal-field-label">Class Status</span>
+                        <select id="mcStatusSelect" class="modal-field-input">
+                            <option value="Open">Open</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Ongoing">Ongoing</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="modal-field-row">
-                    <span class="modal-field-label">Lead Educator</span>
-                    <span class="modal-field-value" id="mcLeadTeacher">—</span>
-                </div>
-                <div class="modal-field-row">
-                    <span class="modal-field-label">Enrollment Capacity</span>
-                    <span class="modal-field-value" id="mcCapacityLabel">0 / 20 Seats</span>
-                </div>
-                <div class="modal-field-row">
-                    <span class="modal-field-label">Description</span>
-                    <span class="modal-field-value" id="mcDescLabel">—</span>
-                </div>
-                <div class="modal-field-row">
-                    <span class="modal-field-label">Class Status</span>
-                    <select id="mcStatusSelect" class="modal-field-input">
-                        <option value="Open">Open</option>
-                        <option value="Ongoing">Ongoing</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
-                    </select>
+
+                <div class="dir-modal-footer">
+                    <button type="button" class="btn-delete-user" id="mcDeleteClassBtn">Delete Class</button>
+                    <div class="modal-footer-right">
+                        <button type="button" class="btn-modal-close" id="mcCloseFooterBtn">Close</button>
+                        <button type="button" class="btn-modal-close" id="mcOpenEditClassBtn">Edit Class Details</button>
+                        <button type="button" class="btn-modal-edit" id="mcSaveStatusBtn">Update Status</button>
+                    </div>
                 </div>
             </div>
 
-            <div class="dir-modal-footer">
-                <button type="button" class="btn-delete-user" id="mcDeleteClassBtn">Delete Class</button>
-                <div class="modal-footer-right">
-                    <button type="button" class="btn-modal-close" id="mcCloseFooterBtn">Close</button>
-                    <button type="button" class="btn-modal-edit" id="mcSaveStatusBtn">Update Status</button>
+            <!-- Edit Class Details Sub-Form -->
+            <div id="mcEditClassPanel" style="display: none;">
+                <section class="roster-subcard" style="margin-bottom: 12px;">
+                    <h3 class="roster-subcard-title">Edit Class Details</h3>
+
+                    <div class="roster-field">
+                        <label for="ecTitle">Class Title <span class="req-star">*</span></label>
+                        <input type="text" id="ecTitle" required>
+                    </div>
+
+                    <div class="roster-field">
+                        <label for="ecDescription">Description</label>
+                        <textarea id="ecDescription" rows="2"></textarea>
+                    </div>
+
+                    <div class="roster-grid-2">
+                        <div class="roster-field">
+                            <label for="ecCapacity">Max Capacity <span class="req-star">*</span></label>
+                            <input type="number" id="ecCapacity" min="1" max="100" required>
+                        </div>
+
+                        <div class="roster-field">
+                            <label for="ecStatus">Status <span class="req-star">*</span></label>
+                            <select id="ecStatus" required>
+                                <option value="Open">Open (accepting learners)</option>
+                                <option value="Draft">Draft</option>
+                                <option value="Ongoing">Ongoing (in session)</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="roster-field" style="margin-bottom: 0;">
+                        <label>Teachers <span class="req-star">*</span></label>
+                        <div id="ecTeacherRowsContainer" class="teacher-rows-stack"></div>
+                        <template id="ecTeacherRowTemplate">
+                            <div class="teacher-assign-row">
+                                <select class="ec-teacher-id" required>
+                                    <option value="">— Select teacher —</option>
+                                    <?php foreach ($teachers_list as $t): ?>
+                                        <option value="<?php echo (int)$t['teacher_id']; ?>">
+                                            <?php echo htmlspecialchars($t['full_name'] . ' (' . $t['specialization'] . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <select class="ec-teacher-role" required>
+                                    <option value="Lead Instructor">Lead Instructor</option>
+                                    <option value="Co-Teacher">Co-Teacher</option>
+                                    <option value="Substitute">Substitute</option>
+                                </select>
+                                <button type="button" class="btn-remove-teacher-row" title="Remove row" aria-label="Remove teacher row">&times;</button>
+                            </div>
+                        </template>
+                        <button type="button" class="btn-add-teacher-row" id="ecAddTeacherRowBtn">
+                            + Add another teacher
+                        </button>
+                    </div>
+                </section>
+
+                <div class="dir-modal-footer">
+                    <div></div>
+                    <div class="modal-footer-right">
+                        <button type="button" class="btn-modal-close" id="ecCancelEditBtn">Cancel</button>
+                        <button type="button" class="btn-modal-edit" id="ecSaveClassBtn">Save Class Details</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -743,7 +776,7 @@ foreach ($classes_list as $cl) {
 
             <div class="new-admin-grid" style="margin-bottom: 12px;">
                 <div class="na-field">
-                    <label for="mcNewSchedDate">ADD SESSION DATE</label>
+                    <label for="mcNewSchedDate">SESSION DATE</label>
                     <input type="date" id="mcNewSchedDate">
                 </div>
                 <div class="na-field">
@@ -763,6 +796,7 @@ foreach ($classes_list as $cl) {
             <div class="dir-modal-footer">
                 <div></div>
                 <div class="modal-footer-right">
+                    <button type="button" class="btn-modal-close" id="mcCancelSchedEditBtn" style="display: none;">Cancel Edit</button>
                     <button type="button" class="btn-modal-edit" id="mcAddScheduleBtn">+ Add Session Date</button>
                 </div>
             </div>
@@ -783,7 +817,7 @@ foreach ($classes_list as $cl) {
                         <?php endforeach; ?>
                     </select>
                     <select id="mcAssignTeacherRole" class="modal-field-input" style="width: 145px; text-align: left;">
-                        <option value="Co-teacher">Co-teacher</option>
+                        <option value="Co-Teacher">Co-Teacher</option>
                         <option value="Lead Instructor">Lead Instructor</option>
                         <option value="Substitute">Substitute</option>
                     </select>
@@ -811,42 +845,7 @@ foreach ($classes_list as $cl) {
     </div>
 </div>
 
-<script src="assets/js/admin_classes.js?v=2"></script>
-<script>
-document.addEventListener('click', function (e) {
-    const addBtn = e.target.closest('#addTeacherRowBtn');
-    if (addBtn) {
-        e.preventDefault();
-        const container = document.getElementById('teacherRowsContainer');
-        const firstRow = container ? container.querySelector('.teacher-assign-row') : null;
-        if (!container || !firstRow) return;
-
-        const newRow = firstRow.cloneNode(true);
-        const teacherSelect = newRow.querySelector('select[name="teacher_ids[]"]');
-        const roleSelect = newRow.querySelector('select[name="teacher_roles[]"]');
-        if (teacherSelect) teacherSelect.value = '';
-        if (roleSelect) roleSelect.value = 'Co-teacher';
-
-        container.appendChild(newRow);
-        return;
-    }
-
-    const removeBtn = e.target.closest('.btn-remove-teacher-row');
-    if (removeBtn) {
-        e.preventDefault();
-        const container = document.getElementById('teacherRowsContainer');
-        const row = removeBtn.closest('.teacher-assign-row');
-        if (!container || !row) return;
-
-        const allRows = container.querySelectorAll('.teacher-assign-row');
-        if (allRows.length <= 1) {
-            const sel = row.querySelector('select[name="teacher_ids[]"]');
-            if (sel) sel.value = '';
-        } else {
-            row.remove();
-        }
-    }
-});
-</script>
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
+<script src="assets/js/admin_classes.js?v=4"></script>
 </body>
 </html>

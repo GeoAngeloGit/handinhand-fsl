@@ -116,16 +116,40 @@ if (isset($conn) && $conn instanceof mysqli) {
         $dbErrors['schedules'] = $e->getMessage();
     }
 
-    // 4. Enrollments for active learner
+    // 4. Enrollments for active learner (with latest session rating & post-class report summary notes)
     if ($activeLearnerId > 0) {
         try {
             $enrStmt = $conn->prepare("
-            SELECT enrollment_id, learner_id, class_id, status,
-                DATE_FORMAT(enrollment_date, '%Y-%m-%d') AS enrolled_date
-            FROM `class_enrollments`
-            WHERE learner_id = ?
-            ORDER BY enrollment_id ASC
-        ");
+                SELECT ce.enrollment_id,
+                       ce.learner_id,
+                       ce.class_id,
+                       ce.status,
+                       DATE_FORMAT(ce.enrollment_date, '%Y-%m-%d') AS enrolled_date,
+                       (
+                           SELECT v.session_rating
+                           FROM `vw_session_attendance_grades` v
+                           WHERE v.class_id = ce.class_id
+                             AND v.learner_id = ce.learner_id
+                             AND v.session_rating IS NOT NULL
+                           ORDER BY v.session_date DESC, v.start_time DESC, v.attendance_id DESC
+                           LIMIT 1
+                       ) AS session_rating,
+                       (
+                           SELECT pcr.summary_notes
+                           FROM `post_class_report` pcr
+                           JOIN `class_schedule` cs ON cs.schedule_id = pcr.schedule_id
+                           WHERE cs.class_id = ce.class_id
+                             AND pcr.summary_notes IS NOT NULL
+                             AND TRIM(pcr.summary_notes) <> ''
+                           ORDER BY FIELD(pcr.status, 'Verified', 'Finished', 'For Revision', 'Pending'),
+                                    cs.session_date DESC,
+                                    pcr.report_id DESC
+                           LIMIT 1
+                       ) AS instructor_notes
+                FROM `class_enrollments` ce
+                WHERE ce.learner_id = ?
+                ORDER BY ce.enrollment_id ASC
+            ");
             $enrStmt->bind_param('i', $activeLearnerId);
             $enrStmt->execute();
             $res = $enrStmt->get_result();
@@ -140,21 +164,24 @@ if (isset($conn) && $conn instanceof mysqli) {
         // 5. Session Grades / Evaluations
         try {
             $grdStmt = $conn->prepare("
-            SELECT v.attendance_id AS grade_id,
-                e.enrollment_id,
-                v.class_id,
-                v.schedule_id,
-                v.attendance_status,
-                v.session_rating,
-                v.remarks,
-                v.session_date,
-                TIME_FORMAT(v.start_time, '%l:%i %p') AS start_time
-            FROM `vw_session_attendance_grades` v
-            JOIN `class_enrollments` e
-            ON e.class_id = v.class_id AND e.learner_id = v.learner_id
-            WHERE v.learner_id = ?
-            ORDER BY v.session_date ASC, v.start_time ASC
-        ");
+                SELECT v.attendance_id AS grade_id,
+                       e.enrollment_id,
+                       v.class_id,
+                       v.schedule_id,
+                       v.attendance_status,
+                       v.session_rating,
+                       v.remarks,
+                       v.session_date,
+                       TIME_FORMAT(v.start_time, '%l:%i %p') AS start_time,
+                       pcr.summary_notes
+                FROM `vw_session_attendance_grades` v
+                JOIN `class_enrollments` e
+                  ON e.class_id = v.class_id AND e.learner_id = v.learner_id
+                LEFT JOIN `post_class_report` pcr
+                  ON pcr.report_id = v.report_id
+                WHERE v.learner_id = ?
+                ORDER BY v.session_date ASC, v.start_time ASC
+            ");
             $grdStmt->bind_param('i', $activeLearnerId);
             $grdStmt->execute();
             $res = $grdStmt->get_result();

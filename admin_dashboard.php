@@ -3,10 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/includes/db_connect.php';
 
-// Enforce Admin-only access when logged in (keeps preview accessible during dev if needed)
-if (!empty($_SESSION['logged_in'])) {
-    require_login([ROLE_ADMIN]);
-}
+require_login([ROLE_ADMIN]);
 
 $admin_username = $_SESSION['username'] ?? 'ADMIN';
 $coordinator_name = 'Albay Coordinator';
@@ -28,36 +25,29 @@ $name_parts = preg_split('/\s+/', trim($coordinator_name));
 $initials = strtoupper(substr($name_parts[0] ?? 'A', 0, 1) . substr($name_parts[1] ?? 'C', 0, 1));
 
 // ==================== KPI METRICS ====================
-$total_learners   = 148;
-$new_learners_wk  = 12;
-$active_teachers  = 24;
-$active_hubs      = 6;
-$total_reports    = 36;
+$total_learners   = 0;
+$new_learners_wk  = 0;
+$active_teachers  = 0;
+$active_hubs      = 0;
+$total_reports    = 0;
 
 try {
     $res = $conn->query("SELECT COUNT(*) AS cnt FROM learners WHERE is_active = 1");
-    $db_learners = (int)($res->fetch_assoc()['cnt'] ?? 0);
-    if ($db_learners > 0) {
-        $total_learners = $db_learners;
-        $wk_res = $conn->query("SELECT COUNT(*) AS cnt FROM learners WHERE is_active = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
-        $new_learners_wk = (int)($wk_res->fetch_assoc()['cnt'] ?? 0);
-    }
+    $total_learners = (int)($res->fetch_assoc()['cnt'] ?? 0);
+
+    $wk_res = $conn->query("SELECT COUNT(*) AS cnt FROM learners WHERE is_active = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+    $new_learners_wk = (int)($wk_res->fetch_assoc()['cnt'] ?? 0);
 
     $res = $conn->query("SELECT COUNT(*) AS cnt FROM teachers WHERE is_active = 1");
-    $db_teachers = (int)($res->fetch_assoc()['cnt'] ?? 0);
-    if ($db_teachers > 0) {
-        $active_teachers = $db_teachers;
-        $hub_res = $conn->query("SELECT COUNT(DISTINCT b.municipality_id) AS cnt FROM teachers t JOIN barangays b ON t.barangay_id = b.barangay_id WHERE t.is_active = 1");
-        $active_hubs = max(1, (int)($hub_res->fetch_assoc()['cnt'] ?? 1));
-    }
+    $active_teachers = (int)($res->fetch_assoc()['cnt'] ?? 0);
 
-    $res = $conn->query("SELECT COUNT(*) AS cnt FROM post_class_reports");
-    $db_reports = (int)($res->fetch_assoc()['cnt'] ?? 0);
-    if ($db_reports > 0) {
-        $total_reports = $db_reports;
-    }
+    $hub_res = $conn->query("SELECT COUNT(DISTINCT b.municipality_id) AS cnt FROM teachers t JOIN barangays b ON t.barangay_id = b.barangay_id WHERE t.is_active = 1");
+    $active_hubs = (int)($hub_res->fetch_assoc()['cnt'] ?? 0);
+
+    $res = $conn->query("SELECT COUNT(*) AS cnt FROM post_class_report");
+    $total_reports = (int)($res->fetch_assoc()['cnt'] ?? 0);
 } catch (Throwable $e) {
-    // Keep mockup default counts if tables are empty or not yet migrated
+    error_log('admin_dashboard KPI error: ' . $e->getMessage());
 }
 
 // ==================== RECENT REGISTRATIONS ====================
@@ -134,105 +124,59 @@ if (empty($recent_registrations)) {
     ];
 }
 
-// ==================== UPCOMING CLASSES ====================
+// ==================== UPCOMING CLASSES & CALENDAR EVENTS ====================
 $upcoming_classes = [];
+$calendar_events  = [];
 try {
     $sql_cls = "
         SELECT 
             c.class_id,
             c.class_title,
             c.max_capacity,
-            b.barangay_name,
-            m.municipality_name,
+            c.current_enrolled,
             cs.session_date,
             cs.start_time,
-            CONCAT(t.first_name, ' ', IFNULL(CONCAT(LEFT(t.middle_name, 1), '. '), ''), t.last_name) AS lead_teacher,
-            (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.class_id AND e.status = 'enrolled') AS enrolled_count
-        FROM class_schedules cs
-        JOIN classes c ON cs.class_id = c.class_id
-        LEFT JOIN barangays b ON c.barangay_id = b.barangay_id
-        LEFT JOIN municipalities m ON b.municipality_id = m.municipality_id
-        LEFT JOIN class_teachers ct ON c.class_id = ct.class_id AND ct.role = 'Lead'
+            cs.venue,
+            cs.status AS session_status,
+            CONCAT(t.first_name, ' ', IFNULL(CONCAT(LEFT(t.middle_name, 1), '. '), ''), t.last_name) AS lead_teacher
+        FROM class_schedule cs
+        JOIN class c ON cs.class_id = c.class_id
+        LEFT JOIN class_teacher ct ON c.class_id = ct.class_id AND ct.assigned_role = 'Lead Instructor'
         LEFT JOIN teachers t ON ct.teacher_id = t.teacher_id
-        WHERE cs.session_date >= CURDATE()
+        WHERE cs.status IN ('scheduled', 'ongoing', 'rescheduled')
         ORDER BY cs.session_date ASC, cs.start_time ASC
-        LIMIT 3
     ";
     $cls_res = $conn->query($sql_cls);
+    $today_iso = date('Y-m-d');
     while ($row = $cls_res->fetch_assoc()) {
-        $hub = !empty($row['barangay_name'])
-            ? 'Brgy. ' . $row['barangay_name'] . ' Hub'
-            : ($row['municipality_name'] ?? 'Albay Hub');
-        $teacher = $row['lead_teacher'] ?: 'TBA Educator';
-        $date_str = date('D, M j, Y', strtotime($row['session_date']));
-        $time_str = date('g:i A', strtotime($row['start_time']));
-        $enrolled = (int)$row['enrolled_count'];
+        $venue    = trim((string)($row['venue'] ?? '')) ?: 'Albay Hub';
+        $teacher  = trim((string)($row['lead_teacher'] ?? '')) ?: 'TBA Educator';
+        $date_iso = (string)$row['session_date'];
+        $date_str = date('D, M j, Y', strtotime($date_iso));
+        $time_str = date('g:i A', strtotime((string)$row['start_time']));
+        $enrolled = (int)$row['current_enrolled'];
         $cap      = (int)($row['max_capacity'] ?: 20);
+        $sched_line = "{$date_str} • {$time_str} • {$enrolled}/{$cap} Enrolled";
 
-        $upcoming_classes[] = [
-            'title'    => $row['class_title'],
-            'meta'     => "{$hub} • {$teacher}",
-            'schedule' => "{$date_str} • {$time_str} • {$enrolled}/{$cap} Enrolled",
-            'date_iso' => $row['session_date'],
-            'hub_only' => $hub
-        ];
+        if (!isset($calendar_events[$date_iso])) {
+            $calendar_events[$date_iso] = [
+                'title' => $row['class_title'],
+                'sub'   => "{$time_str} • {$venue} ({$teacher})"
+            ];
+        }
+
+        if ($date_iso >= $today_iso && count($upcoming_classes) < 3) {
+            $upcoming_classes[] = [
+                'title'    => $row['class_title'],
+                'meta'     => "{$venue} • {$teacher}",
+                'schedule' => $sched_line,
+                'date_iso' => $date_iso,
+                'hub_only' => $venue
+            ];
+        }
     }
 } catch (Throwable $e) {
-    // Fallback below
-}
-
-if (empty($upcoming_classes)) {
-    $upcoming_classes = [
-        [
-            'title'    => 'Basic FSL & Everyday Greetings',
-            'meta'     => 'Brgy. Rawis Hub • Elena S. Reyes',
-            'schedule' => 'Sun, Nov 22, 2026 • 9:00 AM • 14/20 Enrolled',
-            'date_iso' => '2026-11-22',
-            'hub_only' => 'Rawis Hub'
-        ],
-        [
-            'title'    => 'Basic FSL Numbers',
-            'meta'     => 'Brgy. Sagpon, Daraga • Marco L. Tan',
-            'schedule' => 'Wed, Nov 25, 2026 • 2:00 PM • 11/15 Enrolled',
-            'date_iso' => '2026-11-25',
-            'hub_only' => 'Rawis Hub'
-        ],
-        [
-            'title'    => 'Sign Names',
-            'meta'     => 'Brgy. Sagpon, Daraga • Nathan T. Red',
-            'schedule' => 'Sat, Nov 28, 2026 • 4:00 PM • 10/20 Enrolled',
-            'date_iso' => '2026-11-28',
-            'hub_only' => 'Daraga Hub'
-        ]
-    ];
-}
-
-// Calendar events map for JavaScript interactivity
-$calendar_events = [
-    '2026-11-22' => [
-        'title' => 'Basic FSL & Everyday Greetings',
-        'sub'   => '9:00 AM • Brgy. Rawis Hub (Elena S. Reyes)'
-    ],
-    '2026-11-25' => [
-        'title' => 'Basic FSL Numbers',
-        'sub'   => '2:00 PM • Brgy. Sagpon, Daraga (Marco L. Tan)'
-    ],
-    '2026-11-28' => [
-        'title' => 'Sign Names',
-        'sub'   => '4:00 PM • Brgy. Sagpon, Daraga (Nathan T. Red)'
-    ],
-    '2026-11-30' => [
-        'title' => 'FSL Fingerspelling Workshop',
-        'sub'   => '10:00 AM • Legazpi City Community Hub'
-    ]
-];
-foreach ($upcoming_classes as $uc) {
-    if (!empty($uc['date_iso'])) {
-        $calendar_events[$uc['date_iso']] = [
-            'title' => $uc['title'],
-            'sub'   => $uc['schedule']
-        ];
-    }
+    error_log('admin_dashboard upcoming classes error: ' . $e->getMessage());
 }
 ?>
 <!DOCTYPE html>
@@ -426,13 +370,20 @@ foreach ($upcoming_classes as $uc) {
                 </div>
 
                 <div class="item-stack">
-                    <?php foreach ($upcoming_classes as $cls): ?>
+                    <?php if (empty($upcoming_classes)): ?>
                         <div class="class-row">
-                            <strong><?php echo htmlspecialchars($cls['title']); ?></strong>
-                            <span class="class-hub"><?php echo htmlspecialchars($cls['meta']); ?></span>
-                            <span class="class-time"><?php echo htmlspecialchars($cls['schedule']); ?></span>
+                            <strong>No upcoming classes scheduled</strong>
+                            <span class="class-hub">Create or schedule a class in Manage Classes.</span>
                         </div>
-                    <?php endforeach; ?>
+                    <?php else: ?>
+                        <?php foreach ($upcoming_classes as $cls): ?>
+                            <div class="class-row">
+                                <strong><?php echo htmlspecialchars($cls['title']); ?></strong>
+                                <span class="class-hub"><?php echo htmlspecialchars($cls['meta']); ?></span>
+                                <span class="class-time"><?php echo htmlspecialchars($cls['schedule']); ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </article>
 
@@ -470,7 +421,8 @@ foreach ($upcoming_classes as $uc) {
 <script>
     const calendarEvents = <?php echo json_encode($calendar_events, JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/admin.js?v=1"></script>
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
+<script src="assets/js/admin.js?v=2"></script>
 
 </body>
 </html>

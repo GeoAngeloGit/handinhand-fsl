@@ -127,7 +127,7 @@ if (isset($_GET['profile_added'])) {
   <?php include __DIR__ . '/includes/learner_modals.php'; ?>
 
   <!-- Front-End State & Interactive Controllers -->
-  <script src="assets/js/learner.js"></script>
+  <script src="assets/js/learner.js?v=3"></script>
   <?php if ($toast_text !== ''): ?>
   <script>
     setTimeout(() => {

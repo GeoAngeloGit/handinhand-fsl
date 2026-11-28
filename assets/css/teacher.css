@@ -1889,6 +1889,31 @@ a {
     background-color: var(--maroon-dark);
 }
 
+.btn-revise-report {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background-color: var(--maroon-deep);
+    color: #FFFFFF;
+    border: none;
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(92, 24, 43, 0.16);
+    transition: background-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.btn-revise-report:hover {
+    background-color: var(--maroon-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(92, 24, 43, 0.24);
+}
+
 .rpt-filter-row {
     display: flex;
     align-items: center;

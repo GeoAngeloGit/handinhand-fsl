@@ -504,10 +504,10 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 
                 <div class="rpt-footer-right">
                     <button type="button" class="btn-save-draft" id="saveDraftBtn">
-                        &#128190; Save as Draft
+                         Save as Draft
                     </button>
                     <button type="button" class="btn-submit-report" id="submitReportBtn">
-                        &check; Submit Report
+                         Submit Report
                     </button>
                 </div>
             </div>
@@ -564,6 +564,7 @@ unset($_SESSION['report_flash'], $_SESSION['report_flash_type']);
 <script>
 window.ROSTERS_BY_CLASS = <?php echo json_encode($rosters_by_class, JSON_UNESCAPED_UNICODE); ?>;
 </script>
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
 <script src="assets/js/teacher.js?v=3"></script>
 
 <?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>

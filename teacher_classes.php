@@ -662,6 +662,7 @@ $active_classes = array_values(array_filter($all_classes, fn($c) => $c['status']
     </div>
 </div>
 
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
 <script src="assets/js/teacher.js?v=1"></script>
 
 <?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>

@@ -76,7 +76,7 @@ $pageTitle  = 'My Grades — HandInHand | Albay Province';
         >
           <option value="ALL">All Ratings</option>
           <option value="Satisfactory">Satisfactory</option>
-          <option value="Needs Improvement">Needs Improvement</option>
+          <option value="Needs Practice">Needs Practice</option>
           <option value="Unsatisfactory">Unsatisfactory</option>
           <option value="PENDING">Pending Evaluation</option>
         </select>
@@ -92,6 +92,6 @@ $pageTitle  = 'My Grades — HandInHand | Albay Province';
   <?php include __DIR__ . '/includes/learner_modals.php'; ?>
 
   <!-- Front-End State & Interactive Controllers -->
-  <script src="assets/js/learner.js?v=2"></script>
+  <script src="assets/js/learner.js?v=3"></script>
 </body>
 </html>

@@ -86,8 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const badge = document.getElementById('prmStatusBadge');
             badge.textContent = rpt.status;
             badge.className = 'prov-status-pill ' + (
-                rpt.status === 'Reviewed' ? 'rpt-badge-reviewed' :
-                rpt.status === 'Needs Revision' ? 'rpt-badge-revision' : 'rpt-badge-review'
+                rpt.status === 'Verified' ? 'rpt-badge-reviewed' :
+                rpt.status === 'For Revision' ? 'rpt-badge-revision' : 'rpt-badge-review'
             );
 
             document.getElementById('prmSummaryText').textContent = rpt.summary;

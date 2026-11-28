@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Calendar rendering (Defaults to November 2026, Today = Nov 21)
+    // Calendar rendering (Uses current local date)
     const calGrid = document.getElementById('calDaysGrid');
     const calMonthLabel = document.getElementById('calMonthLabel');
     const calTodayBtn = document.getElementById('calTodayBtn');
@@ -16,9 +16,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusTitleEl = document.getElementById('calStatusTitle');
     const statusSubEl = document.getElementById('calStatusSub');
 
-    const TODAY_YEAR = 2026;
-    const TODAY_MONTH = 10; // 0-indexed: 10 = November
-    const TODAY_DAY = 21;
+    const now = new Date();
+    const TODAY_YEAR = now.getFullYear();
+    const TODAY_MONTH = now.getMonth();
+    const TODAY_DAY = now.getDate();
 
     let selectedDay = TODAY_DAY;
 
@@ -47,7 +48,12 @@ document.addEventListener('DOMContentLoaded', () => {
             statusSubEl.textContent = calendarEvents[iso].sub;
         } else {
             statusTitleEl.textContent = isToday ? 'No classes scheduled today' : 'No classes scheduled';
-            statusSubEl.textContent = 'Next: Wednesday, Nov 25 at Rawis Hub';
+            const nextIso = (typeof calendarEvents !== 'undefined')
+                ? Object.keys(calendarEvents).sort().find(d => d >= iso)
+                : null;
+            statusSubEl.textContent = nextIso
+                ? `Next (${nextIso}): ${calendarEvents[nextIso].title}`
+                : 'Select a highlighted date to inspect session details';
         }
     }
 

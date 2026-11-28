@@ -1064,6 +1064,12 @@ body {
     padding: 0 12px;
     height: 32px;
     color: var(--text-muted);
+    min-width: 0;
+}
+
+.dir-search-box svg {
+    flex-shrink: 0;
+    pointer-events: none;
 }
 
 .dir-search-box input {
@@ -1073,7 +1079,10 @@ body {
     font-size: 0.7rem;
     color: var(--maroon-deep);
     outline: none;
+    flex: 1;
     width: 155px;
+    min-width: 0;
+    height: 100%;
 }
 
 .dir-sort-group {
@@ -1877,6 +1886,19 @@ body {
     display: grid;
     grid-template-columns: 1.8fr 1fr 1fr;
     gap: 10px;
+    align-items: center;
+}
+
+.prov-rpt-filter-grid .dir-search-box {
+    width: 100%;
+    height: 36px;
+    position: relative;
+    z-index: 1;
+}
+
+.prov-rpt-filter-grid .dir-search-box input {
+    width: 100%;
+    font-size: 0.72rem;
 }
 
 .prov-select {

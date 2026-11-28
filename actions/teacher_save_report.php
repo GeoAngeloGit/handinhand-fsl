@@ -84,8 +84,8 @@ try {
     $report = $find->get_result()->fetch_assoc();
 
     if (!$report) { // fallback if the session was already ongoing without a report
-        $stmt = $conn->prepare("INSERT INTO post_class_report (schedule_id, status) VALUES (?, 'Pending')");
-        $stmt->bind_param('i', $schedule_id);
+        $stmt = $conn->prepare("INSERT INTO post_class_report (schedule_id, submitted_by, status) VALUES (?, ?, 'Pending')");
+        $stmt->bind_param('ii', $schedule_id, $teacher_id);
         $stmt->execute();
         $stmt->close();
         $find->execute();

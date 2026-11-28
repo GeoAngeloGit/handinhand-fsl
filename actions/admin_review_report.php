@@ -22,27 +22,26 @@ if (!csrf_verify($in['csrf_token'] ?? null)) {
 }
 
 $report_id = (int)($in['report_id'] ?? 0);
-$status    = trim((string)($in['review_status'] ?? 'For Review'));
+$status    = trim((string)($in['review_status'] ?? 'Verified'));
 $notes     = trim((string)($in['coordinator_notes'] ?? ''));
 
-if ($report_id <= 0 || !in_array($status, ['For Review', 'Reviewed', 'Needs Revision'], true)) {
+$allowed = ['Pending', 'Finished', 'Verified', 'For Revision'];
+if ($report_id <= 0 || !in_array($status, $allowed, true)) {
     out(false, 'Invalid review parameters.', 400);
 }
 
 try {
-    // Support either review_status or status column on class_reports
     $cols = [];
-    $res = $conn->query("SHOW COLUMNS FROM class_reports");
+    $res = $conn->query("SHOW COLUMNS FROM post_class_report");
     while ($c = $res->fetch_assoc()) {
         $cols[] = $c['Field'];
     }
 
-    $status_col = in_array('review_status', $cols, true) ? 'review_status' : 'status';
-    if (in_array('coordinator_notes', $cols, true)) {
-        $stmt = $conn->prepare("UPDATE class_reports SET {$status_col} = ?, coordinator_notes = ? WHERE report_id = ?");
+    if (in_array('admin_remarks', $cols, true)) {
+        $stmt = $conn->prepare("UPDATE post_class_report SET status = ?, admin_remarks = ? WHERE report_id = ?");
         $stmt->bind_param('ssi', $status, $notes, $report_id);
     } else {
-        $stmt = $conn->prepare("UPDATE class_reports SET {$status_col} = ? WHERE report_id = ?");
+        $stmt = $conn->prepare("UPDATE post_class_report SET status = ? WHERE report_id = ?");
         $stmt->bind_param('si', $status, $report_id);
     }
     $stmt->execute();

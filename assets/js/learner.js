@@ -1,5 +1,8 @@
 const DB = window.HIH_INITIAL_STATE || {};
 
+const _initToday = new Date();
+const _initTodayIso = `${_initToday.getFullYear()}-${String(_initToday.getMonth() + 1).padStart(2, '0')}-${String(_initToday.getDate()).padStart(2, '0')}`;
+
 const learnerState = {
   csrfToken: DB.csrfToken || '',
   activeLearnerId: Number(DB.activeLearnerId) || 0,
@@ -11,10 +14,10 @@ const learnerState = {
   municipalities: Array.isArray(DB.municipalities) ? DB.municipalities : [],
   barangays: Array.isArray(DB.barangays) ? DB.barangays : [],
 
-  // Interactive Session Calendar State (defaults to Nov 2026)
-  calendarYear: 2026,
-  calendarMonth: 10, // 0-indexed: 10 = November
-  selectedCalendarDate: null,
+  // Interactive Session Calendar State (defaults to current local date)
+  calendarYear: _initToday.getFullYear(),
+  calendarMonth: _initToday.getMonth(),
+  selectedCalendarDate: _initTodayIso,
   calendarPickerOpen: false,
   calendarClassFilter: 'ALL',
   calendarSortBy: 'DATE', // 'DATE' | 'TIME'
@@ -135,11 +138,11 @@ function getGradePillHtml(grade, size = 'sm') {
       </span>
     `;
   }
-  if (grade === 'Needs Improvement') {
+  if (grade === 'Needs Practice' || grade === 'Needs Improvement') {
     return `
       <span class="inline-flex items-center gap-1.5 ${pad} rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-bold whitespace-nowrap shrink-0">
         <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-        <span>Needs Improvement</span>
+        <span>${escapeHtml(grade)}</span>
       </span>
     `;
   }
@@ -157,6 +160,35 @@ function getGradePillHtml(grade, size = 'sm') {
       <span>${escapeHtml(grade || 'Pending Evaluation')}</span>
     </span>
   `;
+}
+
+function getEnrollmentRating(enr) {
+  if (!enr) return '';
+  if (enr.session_rating) return enr.session_rating;
+  const rated = learnerState.sessionGrades.filter(
+    (sg) =>
+      (Number(sg.enrollment_id) === Number(enr.enrollment_id) ||
+        Number(sg.class_id) === Number(enr.class_id)) &&
+      sg.session_rating
+  );
+  if (rated.length === 0) return '';
+  return rated[rated.length - 1].session_rating || '';
+}
+
+function getEnrollmentNotes(enr) {
+  if (!enr) return '';
+  if (enr.instructor_notes && String(enr.instructor_notes).trim() !== '') {
+    return String(enr.instructor_notes).trim();
+  }
+  const withNotes = learnerState.sessionGrades.filter(
+    (sg) =>
+      (Number(sg.enrollment_id) === Number(enr.enrollment_id) ||
+        Number(sg.class_id) === Number(enr.class_id)) &&
+      sg.summary_notes &&
+      String(sg.summary_notes).trim() !== ''
+  );
+  if (withNotes.length === 0) return '';
+  return String(withNotes[withNotes.length - 1].summary_notes).trim();
 }
 
 function renderInstructorsPills(instructorStr) {
@@ -319,10 +351,21 @@ function setCalendarMonth(month) {
   renderDashboardView();
 }
 
+function getTodayDateInfo() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const shortLabel = `${SHORT_MONTH_NAMES[month]} ${day}`;
+  return { year, month, day, iso, shortLabel };
+}
+
 function resetCalendarToToday() {
-  learnerState.calendarYear = 2026;
-  learnerState.calendarMonth = 10; // Nov 2026
-  learnerState.selectedCalendarDate = null;
+  const today = getTodayDateInfo();
+  learnerState.calendarYear = today.year;
+  learnerState.calendarMonth = today.month;
+  learnerState.selectedCalendarDate = today.iso;
   learnerState.calendarPickerOpen = false;
   renderDashboardView();
 }
@@ -368,6 +411,7 @@ function buildInteractiveCalendarHtml() {
   const learner = getActiveLearner();
   if (!learner) return '';
 
+  const todayInfo = getTodayDateInfo();
   const year = learnerState.calendarYear;
   const month = learnerState.calendarMonth;
   const myEnrollments = learnerState.enrollments.filter(
@@ -454,7 +498,7 @@ function buildInteractiveCalendarHtml() {
             type="button"
             onclick="resetCalendarToToday()"
             class="px-2 py-0.5 rounded-md bg-[#EEF4F9] hover:bg-[#2E5D8A] text-[#2E5D8A] hover:text-white text-[10px] font-bold transition-colors cursor-pointer"
-          >Today (Nov 26)</button>
+          >Today (${todayInfo.shortLabel})</button>
         </div>
         <div class="grid grid-cols-4 gap-1">
           ${SHORT_MONTH_NAMES.map(
@@ -480,7 +524,7 @@ function buildInteractiveCalendarHtml() {
       if (cell.empty) return `<div class="h-8"></div>`;
       const hasSession = sessionDateSet.has(cell.dateStr);
       const isSelected = learnerState.selectedCalendarDate === cell.dateStr;
-      const isToday = cell.dateStr === '2026-11-26';
+      const isToday = cell.dateStr === todayInfo.iso;
 
       let btnClass =
         'w-8 h-8 mx-auto rounded-full flex items-center justify-center text-[11.5px] font-semibold tabular-code transition-all cursor-pointer ';
@@ -570,7 +614,7 @@ function buildInteractiveCalendarHtml() {
 
     <div class="flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-[#6D4C57] pt-1 border-t border-[#5B0F2B]/[0.06]">
       <div class="flex items-center gap-2.5 flex-wrap">
-        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#5B0F2B]"></span><span>Today (Nov 26)</span></span>
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#5B0F2B]"></span><span>Today (${todayInfo.shortLabel})</span></span>
         <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#F7D6E0] border border-[#8D2645]/30"></span><span>Scheduled</span></span>
       </div>
       ${
@@ -655,7 +699,7 @@ function renderDashboardView() {
   const upcomingSessionsCount = learnerState.schedules.filter((s) =>
     enrolledClassIds.has(Number(s.class_id))
   ).length;
-  const satisfactoryCount = myEnrollments.filter((e) => e.session_rating === 'Satisfactory').length;
+  const satisfactoryCount = myEnrollments.filter((e) => getEnrollmentRating(e) === 'Satisfactory').length;
 
   if (kpiGrid) {
     const kpis = [
@@ -720,7 +764,7 @@ function renderDashboardView() {
             >
               <div class="flex items-center justify-between gap-2 pb-1.5 border-b border-[#5B0F2B]/[0.07]">
                 <span class="text-[10px] font-bold text-[#2E5D8A] tabular-code">${clsCode}</span>
-                ${getGradePillHtml(enr.session_rating, 'sm')}
+                ${getGradePillHtml(getEnrollmentRating(enr), 'sm')}
               </div>
               <span class="text-[12.5px] font-bold text-[#5B0F2B] truncate">
                 ${cls ? escapeHtml(cls.class_title) : clsCode}
@@ -1008,7 +1052,7 @@ function openClassDetailsModal(classId) {
   if (enrolledRecord) {
     rows.push({
       label: 'Current Grade',
-      value: getGradePillHtml(enrolledRecord.session_rating, 'sm'),
+      value: getGradePillHtml(getEnrollmentRating(enrolledRecord), 'sm'),
       isHtml: true
     });
   }
@@ -1229,11 +1273,11 @@ function renderGradesView() {
   const kpiGrid = document.getElementById('grades-kpi-grid');
   if (kpiGrid) {
     const totalCourses = myEnrollments.length;
-    const satisfactoryCount = myEnrollments.filter((e) => e.session_rating === 'Satisfactory').length;
-    const pendingCount = myEnrollments.filter((e) => !e.session_rating).length;
+    const satisfactoryCount = myEnrollments.filter((e) => getEnrollmentRating(e) === 'Satisfactory').length;
+    const pendingCount = myEnrollments.filter((e) => !getEnrollmentRating(e)).length;
     const myEnrollmentIds = new Set(myEnrollments.map((e) => Number(e.enrollment_id)));
-    const sessionEvalCount = learnerState.sessionGrades.filter((sg) =>
-      myEnrollmentIds.has(Number(sg.enrollment_id))
+    const sessionEvalCount = learnerState.sessionGrades.filter(
+      (sg) => myEnrollmentIds.has(Number(sg.enrollment_id)) && Boolean(sg.session_rating)
     ).length;
 
     const kpis = [
@@ -1282,7 +1326,7 @@ function renderGradesView() {
       return false;
     }
 
-    const rating = enr.session_rating || '';
+    const rating = getEnrollmentRating(enr);
     if (ratingVal === 'PENDING' && rating !== '') return false;
     if (ratingVal !== 'ALL' && ratingVal !== 'PENDING' && rating !== ratingVal) return false;
 
@@ -1293,7 +1337,8 @@ function renderGradesView() {
         .filter((sg) => Number(sg.enrollment_id) === Number(enr.enrollment_id))
         .map((sg) => sg.remarks || '')
         .join(' ');
-      const hay = `${clsCode} ${cls?.class_title || ''} ${cls?.instructor || ''} ${enr.instructor_notes || ''} ${sessionRemarks}`.toLowerCase();
+      const overallNotes = getEnrollmentNotes(enr);
+      const hay = `${clsCode} ${cls?.class_title || ''} ${cls?.instructor || ''} ${overallNotes} ${sessionRemarks}`.toLowerCase();
       if (!hay.includes(searchVal)) return false;
     }
     return true;
@@ -1405,7 +1450,7 @@ function renderGradesView() {
             </div>
 
             <div class="flex items-center gap-2 self-start sm:self-center shrink-0">
-              ${getGradePillHtml(enr.session_rating, 'md')}
+              ${getGradePillHtml(getEnrollmentRating(enr), 'md')}
               <button
                 type="button"
                 onclick="openClassDetailsModal(${enr.class_id})"
@@ -1425,7 +1470,7 @@ function renderGradesView() {
             <div class="lg:col-span-8 rounded-xl bg-[#F8F6F7] border border-[#5B0F2B]/[0.06] px-3.5 py-2.5 flex flex-col gap-1">
               <span class="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#6D4C57]">Overall Instructor Notes</span>
               <p class="text-[12px] text-[#2D141E] leading-relaxed">
-                ${escapeHtml(enr.instructor_notes || 'No overall course remarks posted by the instructor yet.')}
+                ${escapeHtml(getEnrollmentNotes(enr) || 'No overall course remarks posted by the instructor yet.')}
               </p>
             </div>
           </div>
@@ -1559,7 +1604,7 @@ function renderClassesView() {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <span class="text-[10px] font-bold text-[#8D2645] tabular-code">${clsCode} • ${enrCode}</span>
                   <div class="flex items-center gap-1.5">
-                    ${getGradePillHtml(enr.session_rating, 'sm')}
+                    ${getGradePillHtml(getEnrollmentRating(enr), 'sm')}
                     ${getStatusBadgeHtml(cls.status)}
                   </div>
                 </div>
@@ -1660,28 +1705,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const allBarangays =
     (typeof learnerState !== 'undefined' && Array.isArray(learnerState.barangays))
       ? learnerState.barangays
-      : (window.learnerState && Array.isArray(window.learnerState.barangays) ? window.learnerState.barangays : []);
+      : [];
 
-  if (muniSelect && brgySelect && allBarangays.length > 0) {
-    const municipalities = [...new Set(allBarangays.map((b) => b.municipality_name))].sort();
-    municipalities.forEach((m) => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      muniSelect.appendChild(opt);
-    });
+  if (muniSelect && brgySelect) {
+    if (muniSelect.options.length <= 1 && typeof learnerState !== 'undefined' && Array.isArray(learnerState.municipalities)) {
+      learnerState.municipalities.forEach((m) => {
+        const opt = document.createElement('option');
+        opt.value = m.municipality_id;
+        opt.textContent = m.municipality_name;
+        muniSelect.appendChild(opt);
+      });
+    }
 
     muniSelect.addEventListener('change', () => {
-      const chosenMuni = muniSelect.value;
+      const chosenMuniId = Number(muniSelect.value);
+      if (!chosenMuniId) {
+        brgySelect.innerHTML = '<option value="">Select Municipality First</option>';
+        brgySelect.disabled = true;
+        return;
+      }
+
+      const matches = allBarangays.filter((b) => Number(b.municipality_id) === chosenMuniId);
       brgySelect.innerHTML = '<option value="">Select Barangay...</option>';
-      allBarangays
-        .filter((b) => b.municipality_name === chosenMuni)
-        .forEach((b) => {
-          const opt = document.createElement('option');
-          opt.value = b.barangay_id;
-          opt.textContent = b.barangay_name;
-          brgySelect.appendChild(opt);
-        });
+      matches.forEach((b) => {
+        const opt = document.createElement('option');
+        opt.value = b.barangay_id;
+        opt.textContent = b.barangay_name;
+        brgySelect.appendChild(opt);
+      });
+      brgySelect.disabled = matches.length === 0;
     });
   }
 });

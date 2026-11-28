@@ -83,9 +83,13 @@ if (isset($conn) && $conn instanceof mysqli) {
                 l.*,
                 a.email,
                 a.created_at,
-                YEAR(a.created_at) AS acc_year
+                YEAR(a.created_at) AS acc_year,
+                b.barangay_name,
+                m.municipality_name
             FROM learners l
             JOIN accounts a ON a.account_id = l.account_id
+            LEFT JOIN barangays b ON b.barangay_id = l.barangay_id
+            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
             ORDER BY l.learner_id ASC
         ";
         if ($res = $conn->query($sql_lrn)) {
@@ -97,7 +101,10 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $acc_code  = sprintf('ACC-%s-%03d', $r['acc_year'] ?: date('Y'), (int)$r['account_id']);
 
                 $status     = !empty($r['is_active']) ? 'Active' : 'Inactive';
-                $loc        = !empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Rawis, Legazpi City';
+                $brgy       = trim((string)($r['barangay_name'] ?? ''));
+                $muni       = trim((string)($r['municipality_name'] ?? ''));
+                $loc        = trim($brgy . ($brgy !== '' && $muni !== '' ? ', ' : '') . $muni)
+                    ?: (!empty($r['barangay_id']) ? 'Barangay #' . $r['barangay_id'] : 'Albay Province');
 
                 // Enrolled classes for this learner
                 $enrolled_ids   = [];
@@ -500,6 +507,7 @@ $inactive_lrn_cnt   = $total_learners_cnt - $active_lrn_cnt;
     </div>
 </div>
 
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
 <script src="assets/js/teacher.js?v=1"></script>
 
 <?php include __DIR__ . '/includes/teacher_profile_modal.php'; ?>

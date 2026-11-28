@@ -1101,7 +1101,7 @@ CREATE TABLE `class_schedule` (
   `start_time` time NOT NULL,
   `end_time` time NOT NULL CHECK (`end_time` > `start_time`),
   `venue` varchar(255) DEFAULT NULL,
-  `status` enum('scheduled','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
+  `status` enum('scheduled','ongoing','completed','rescheduled','cancelled') NOT NULL DEFAULT 'scheduled',
   `remarks` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -1241,7 +1241,7 @@ DROP TABLE IF EXISTS `post_class_report`;
 CREATE TABLE `post_class_report` (
   `report_id` int(11) NOT NULL,
   `schedule_id` int(11) NOT NULL,
-  `submitted_by` int(11) NOT NULL,
+  `submitted_by` int(11) DEFAULT NULL,
   `status` enum('Pending','Finished','Verified','For Revision') NOT NULL DEFAULT 'Pending',
   `summary_notes` text DEFAULT NULL,
   `admin_remarks` text DEFAULT NULL,

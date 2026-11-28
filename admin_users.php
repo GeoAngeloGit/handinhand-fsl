@@ -8,9 +8,7 @@ if (!defined('ROLE_ADMIN')) {
     define('ROLE_ADMIN', 1);
 }
 
-if (!empty($_SESSION['logged_in']) && function_exists('require_login')) {
-    require_login([ROLE_ADMIN]);
-}
+require_login([ROLE_ADMIN]);
 
 $coordinator_name = 'Albay Coordinator';
 $coordinator_hub  = 'Legazpi Hub';
@@ -352,6 +350,7 @@ $displayed_total = count($accounts_list);
     </main>
 </div>
 
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
 <script src="assets/js/admin_users.js?v=1"></script>
 
 </body>

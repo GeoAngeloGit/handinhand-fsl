@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cardStatus = card.dataset.status || '';
 
             const matchSearch = !query || hay.includes(query);
-            const matchLevel = level === 'ALL' || cardLevel === level;
+            const matchLevel = !level || level === 'ALL' || cardLevel === level;
             const matchStatus = activeStatus === 'ALL' || cardStatus === activeStatus;
 
             const show = matchSearch && matchLevel && matchStatus;
@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const teacherSelect = clone.querySelector('select[name="teacher_ids[]"]');
             const roleSelect = clone.querySelector('select[name="teacher_roles[]"]');
             if (teacherSelect) teacherSelect.value = '';
-            if (roleSelect) roleSelect.value = 'Co-teacher';
+            if (roleSelect) roleSelect.value = 'Co-Teacher';
             bindRowRemove(clone);
             teacherRowsContainer.appendChild(clone);
         });
@@ -157,8 +157,56 @@ document.addEventListener('DOMContentLoaded', () => {
     const mcSchedulesList = document.getElementById('mcSchedulesList');
     const mcTeachersList = document.getElementById('mcTeachersList');
     const mcLearnersList = document.getElementById('mcLearnersList');
+    const mcAddScheduleBtn = document.getElementById('mcAddScheduleBtn');
+    const mcCancelSchedEditBtn = document.getElementById('mcCancelSchedEditBtn');
+    const mcOverviewView = document.getElementById('mcOverviewView');
+    const mcEditClassPanel = document.getElementById('mcEditClassPanel');
+    const ecTeacherRowsContainer = document.getElementById('ecTeacherRowsContainer');
+    const ecTeacherRowTemplate = document.getElementById('ecTeacherRowTemplate');
 
     let currentClass = null;
+    let editingScheduleId = null;
+
+    function resetScheduleForm() {
+        editingScheduleId = null;
+        const dEl = document.getElementById('mcNewSchedDate');
+        const rEl = document.getElementById('mcNewSchedRoom');
+        const sEl = document.getElementById('mcNewSchedStart');
+        const eEl = document.getElementById('mcNewSchedEnd');
+        if (dEl) dEl.value = '';
+        if (rEl) rEl.value = '';
+        if (sEl) sEl.value = '09:00';
+        if (eEl) eEl.value = '11:00';
+        if (mcAddScheduleBtn) mcAddScheduleBtn.textContent = '+ Add Session Date';
+        if (mcCancelSchedEditBtn) mcCancelSchedEditBtn.style.display = 'none';
+    }
+
+    function toggleEditClassPanel(show) {
+        if (mcOverviewView) mcOverviewView.style.display = show ? 'none' : '';
+        if (mcEditClassPanel) mcEditClassPanel.style.display = show ? '' : 'none';
+    }
+
+    function createEditTeacherRow(teacherId = '', role = 'Co-Teacher') {
+        if (!ecTeacherRowTemplate || !ecTeacherRowsContainer) return;
+        const frag = ecTeacherRowTemplate.content.cloneNode(true);
+        const row = frag.querySelector('.teacher-assign-row');
+        const tSel = row.querySelector('.ec-teacher-id');
+        const rSel = row.querySelector('.ec-teacher-role');
+        if (tSel && teacherId) tSel.value = String(teacherId);
+        if (rSel && role) rSel.value = role;
+        const remBtn = row.querySelector('.btn-remove-teacher-row');
+        if (remBtn) {
+            remBtn.addEventListener('click', () => {
+                const allRows = ecTeacherRowsContainer.querySelectorAll('.teacher-assign-row');
+                if (allRows.length <= 1) {
+                    if (tSel) tSel.value = '';
+                } else {
+                    row.remove();
+                }
+            });
+        }
+        ecTeacherRowsContainer.appendChild(row);
+    }
 
     async function postClassAction(payload) {
         const res = await fetch('actions/admin_manage_class.php', {
@@ -171,7 +219,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderManageModal(cls) {
         currentClass = cls;
-        if (mcSubMeta) mcSubMeta.textContent = `${cls.code} • ${cls.skill_level.toUpperCase()} LEVEL`;
+        resetScheduleForm();
+        toggleEditClassPanel(false);
+        if (mcSubMeta) mcSubMeta.textContent = `${cls.code} • ${cls.hub_label}`;
         if (mcTitle) mcTitle.textContent = cls.title;
         if (mcStatusBadge) {
             mcStatusBadge.innerHTML = `&bull; ${cls.status}`;
@@ -195,10 +245,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     row.innerHTML = `
                         <div>
                             <div class="modal-field-value" style="text-align:left;">${s.date_label} (${s.time_label})</div>
-                            <div class="modal-field-label">${s.room_location || 'Hub Room'}</div>
+                            <div class="modal-field-label">${s.venue || s.room_location || 'Hub Room'}</div>
                         </div>
-                        <button type="button" class="btn-delete-user" data-del-sched="${s.schedule_id}" style="padding:4px 10px;">Remove</button>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <select class="modal-field-input" data-sched-status="${s.schedule_id}" style="width:115px;padding:3px 6px;">
+                                <option value="scheduled" ${s.status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+                                <option value="ongoing" ${s.status === 'ongoing' ? 'selected' : ''}>Ongoing</option>
+                                <option value="rescheduled" ${s.status === 'rescheduled' ? 'selected' : ''}>Rescheduled</option>
+                                <option value="cancelled" ${s.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                                <option value="completed" ${s.status === 'completed' ? 'selected' : ''}>Completed</option>
+                            </select>
+                            <button type="button" class="btn-modal-close" data-edit-sched="${s.schedule_id}" style="padding:4px 10px;">Edit</button>
+                            <button type="button" class="btn-delete-user" data-del-sched="${s.schedule_id}" style="padding:4px 10px;">Remove</button>
+                        </div>
                     `;
+                    row.querySelector('[data-sched-status]').addEventListener('change', async (e) => {
+                        const out = await postClassAction({
+                            action: 'update_schedule_status',
+                            class_id: cls.class_id,
+                            schedule_id: s.schedule_id,
+                            status: e.target.value
+                        });
+                        if (out.ok) window.location.reload();
+                        else alert(out.message || 'Could not update session status.');
+                    });
+                    row.querySelector('[data-edit-sched]').addEventListener('click', () => {
+                        editingScheduleId = s.schedule_id;
+                        const dEl = document.getElementById('mcNewSchedDate');
+                        const rEl = document.getElementById('mcNewSchedRoom');
+                        const sEl = document.getElementById('mcNewSchedStart');
+                        const eEl = document.getElementById('mcNewSchedEnd');
+                        if (dEl) dEl.value = s.session_date || '';
+                        if (rEl) rEl.value = s.venue || s.room_location || '';
+                        if (sEl) sEl.value = (s.start_time || '09:00').slice(0, 5);
+                        if (eEl) eEl.value = (s.end_time || '11:00').slice(0, 5);
+                        if (mcAddScheduleBtn) mcAddScheduleBtn.textContent = 'Save Schedule Changes';
+                        if (mcCancelSchedEditBtn) mcCancelSchedEditBtn.style.display = 'inline-flex';
+                    });
                     row.querySelector('[data-del-sched]').addEventListener('click', async () => {
                         const out = await postClassAction({
                             action: 'remove_schedule',
@@ -327,28 +410,125 @@ document.addEventListener('DOMContentLoaded', () => {
         else alert(out.message || 'Could not delete class.');
     });
 
-    // Add Session Date
+    // Open / Cancel / Save Edit Class Details
+    document.getElementById('mcOpenEditClassBtn')?.addEventListener('click', () => {
+        if (!currentClass) return;
+        const tEl = document.getElementById('ecTitle');
+        const dEl = document.getElementById('ecDescription');
+        const cEl = document.getElementById('ecCapacity');
+        const sEl = document.getElementById('ecStatus');
+        if (tEl) tEl.value = currentClass.title || '';
+        if (dEl) dEl.value = currentClass.description || '';
+        if (cEl) cEl.value = String(currentClass.max_capacity || 20);
+        if (sEl) sEl.value = currentClass.status || 'Open';
+        if (ecTeacherRowsContainer) {
+            ecTeacherRowsContainer.innerHTML = '';
+            const assigned = Array.isArray(currentClass.assigned_teachers) ? currentClass.assigned_teachers : [];
+            if (assigned.length > 0) {
+                assigned.forEach(t => createEditTeacherRow(t.teacher_id, t.role));
+            } else {
+                createEditTeacherRow('', 'Lead Instructor');
+            }
+        }
+        toggleEditClassPanel(true);
+    });
+
+    document.getElementById('ecAddTeacherRowBtn')?.addEventListener('click', () => {
+        createEditTeacherRow('', 'Co-Teacher');
+    });
+
+    document.getElementById('ecCancelEditBtn')?.addEventListener('click', () => {
+        toggleEditClassPanel(false);
+    });
+
+    document.getElementById('ecSaveClassBtn')?.addEventListener('click', async () => {
+        if (!currentClass) return;
+        const class_title = document.getElementById('ecTitle')?.value.trim() || '';
+        const description = document.getElementById('ecDescription')?.value.trim() || '';
+        const max_capacity = parseInt(document.getElementById('ecCapacity')?.value || '0', 10);
+        const status = document.getElementById('ecStatus')?.value || 'Open';
+
+        const rows = ecTeacherRowsContainer ? Array.from(ecTeacherRowsContainer.querySelectorAll('.teacher-assign-row')) : [];
+        const teachers = [];
+        const seen = new Set();
+        let leadCount = 0;
+
+        for (const r of rows) {
+            const tid = parseInt(r.querySelector('.ec-teacher-id')?.value || '0', 10);
+            const role = r.querySelector('.ec-teacher-role')?.value || 'Co-Teacher';
+            if (!tid) continue;
+            if (seen.has(tid)) {
+                alert('Each assigned teacher must be unique. Remove duplicate teacher selections.');
+                return;
+            }
+            seen.add(tid);
+            if (role === 'Lead Instructor') leadCount++;
+            teachers.push({ teacher_id: tid, role });
+        }
+
+        if (!class_title || max_capacity < 1) {
+            alert('Class title and a valid max capacity (>= 1) are required.');
+            return;
+        }
+        if (teachers.length === 0 || leadCount !== 1) {
+            alert('Please assign at least one teacher and exactly one Lead Instructor.');
+            return;
+        }
+
+        const out = await postClassAction({
+            action: 'edit_class',
+            class_id: currentClass.class_id,
+            class_title,
+            description,
+            max_capacity,
+            status,
+            teachers
+        });
+        if (out.ok) window.location.reload();
+        else alert(out.message || 'Could not update class details.');
+    });
+
+    // Add or Edit Session Date
+    if (mcCancelSchedEditBtn) {
+        mcCancelSchedEditBtn.addEventListener('click', resetScheduleForm);
+    }
+
     document.getElementById('mcAddScheduleBtn')?.addEventListener('click', async () => {
         if (!currentClass) return;
         const session_date = document.getElementById('mcNewSchedDate').value;
-        const room_location = document.getElementById('mcNewSchedRoom').value.trim();
+        const venue = document.getElementById('mcNewSchedRoom').value.trim();
         const start_time = document.getElementById('mcNewSchedStart').value;
         const end_time = document.getElementById('mcNewSchedEnd').value;
 
-        if (!session_date || !start_time) {
-            alert('Please provide a session date and start time.');
+        if (!session_date || !start_time || !end_time) {
+            alert('Please provide a session date, start time, and end time.');
             return;
         }
-        const out = await postClassAction({
-            action: 'add_schedule',
-            class_id: currentClass.class_id,
-            session_date,
-            start_time,
-            end_time,
-            room_location
-        });
+        if (end_time <= start_time) {
+            alert('End time must be after start time.');
+            return;
+        }
+        const payload = editingScheduleId
+            ? {
+                action: 'edit_schedule',
+                class_id: currentClass.class_id,
+                schedule_id: editingScheduleId,
+                session_date,
+                start_time,
+                end_time,
+                venue
+            }
+            : {
+                action: 'add_schedule',
+                class_id: currentClass.class_id,
+                session_date,
+                start_time,
+                end_time,
+                venue
+            };
+        const out = await postClassAction(payload);
         if (out.ok) window.location.reload();
-        else alert(out.message || 'Could not add session date.');
+        else alert(out.message || 'Could not save session schedule.');
     });
 
     // Assign Teacher

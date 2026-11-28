@@ -7,9 +7,7 @@ if (!defined('ROLE_ADMIN')) {
     define('ROLE_ADMIN', 1);
 }
 
-if (!empty($_SESSION['logged_in']) && function_exists('require_login')) {
-    require_login([ROLE_ADMIN]);
-}
+require_login([ROLE_ADMIN]);
 
 $current_account_id = (int)($_SESSION['account_id'] ?? 0);
 $coordinator_name   = 'Albay Coordinator';
@@ -69,31 +67,39 @@ if (isset($conn) && $conn instanceof mysqli) {
         error_log("Teachers dropdown fetch error: " . $e->getMessage());
     }
 
-    // Fetch Post-Class Reports joined with Schedules, Classes, Barangays, Municipalities, Teachers
+    // Fetch Post-Class Reports using post_class_report, vw_session_attendance_summary, report_photos & vw_session_attendance_grades
     try {
+        $has_admin_remarks = false;
+        if ($chk = $conn->query("SHOW COLUMNS FROM post_class_report LIKE 'admin_remarks'")) {
+            $has_admin_remarks = ($chk->num_rows > 0);
+        }
+        $remarks_col = $has_admin_remarks ? 'pcr.admin_remarks,' : "'' AS admin_remarks,";
+
         $sql = "
             SELECT 
-                cr.*,
-                cs.schedule_id,
-                cs.session_date,
-                cs.start_time,
-                cs.room_location,
-                c.class_id,
-                c.class_title,
-                c.skill_level,
-                b.barangay_name,
-                m.municipality_name,
-                t.teacher_id AS t_id,
+                pcr.report_id,
+                pcr.schedule_id,
+                pcr.submitted_by,
+                pcr.status,
+                pcr.summary_notes,
+                {$remarks_col}
+                pcr.submission_timestamp,
+                s.class_id,
+                s.class_title,
+                s.session_date,
+                s.start_time,
+                s.venue,
+                s.total_recorded,
+                s.present_count,
+                s.late_count,
                 t.first_name AS t_first,
                 t.middle_name AS t_mid,
-                t.last_name AS t_last
-            FROM class_reports cr
-            LEFT JOIN class_schedules cs ON cs.schedule_id = cr.schedule_id
-            JOIN classes c ON c.class_id = COALESCE(cr.class_id, cs.class_id)
-            LEFT JOIN barangays b ON b.barangay_id = c.barangay_id
-            LEFT JOIN municipalities m ON m.municipality_id = b.municipality_id
-            LEFT JOIN teachers t ON t.teacher_id = cr.teacher_id
-            ORDER BY COALESCE(cr.submitted_at, cr.report_date) DESC, cr.report_id DESC
+                t.last_name AS t_last,
+                (SELECT rp.photo_file_path FROM report_photos rp WHERE rp.report_id = pcr.report_id ORDER BY rp.photo_id DESC LIMIT 1) AS photo_path
+            FROM post_class_report pcr
+            JOIN vw_session_attendance_summary s ON s.report_id = pcr.report_id
+            LEFT JOIN teachers t ON t.teacher_id = pcr.submitted_by
+            ORDER BY pcr.submission_timestamp DESC, pcr.report_id DESC
         ";
         $res = $conn->query($sql);
 
@@ -102,102 +108,71 @@ if (isset($conn) && $conn instanceof mysqli) {
                 $rid      = (int)$r['report_id'];
                 $sched_id = (int)($r['schedule_id'] ?? 0);
                 $cid      = (int)$r['class_id'];
-                $tid      = (int)($r['t_id'] ?? $r['teacher_id'] ?? 0);
+                $tid      = (int)($r['submitted_by'] ?? 0);
 
                 $mid = !empty($r['t_mid']) ? ' ' . strtoupper(substr(trim((string)$r['t_mid']), 0, 1)) . '.' : '';
-                $teacher_display = trim(($r['t_last'] ?? 'Educator') . ', ' . ($r['t_first'] ?? '') . $mid);
+                $teacher_display = $tid > 0
+                    ? trim(($r['t_last'] ?? 'Educator') . ', ' . ($r['t_first'] ?? '') . $mid)
+                    : 'Pending Submission';
                 $teacher_code    = $tid > 0 ? sprintf('TCH-%05d', $tid) : 'TCH-00000';
 
-                $muni = $r['municipality_name'] ?? 'Albay Province';
-                $brgy = $r['barangay_name'] ?? '';
-                $location_label = $brgy ? "{$muni} (Brgy. {$brgy})" : $muni;
+                $location_label = trim((string)($r['venue'] ?? '')) ?: 'Albay Hub';
 
-                $sess_date = $r['session_date'] ?? $r['report_date'] ?? '';
+                $sess_date = $r['session_date'] ?? '';
                 $sess_time = !empty($r['start_time']) ? date('h:i A', strtotime($r['start_time'])) : '09:00 AM';
                 $sess_date_fmt = !empty($sess_date) ? date('Y-m-d', strtotime($sess_date)) : '—';
 
-                $raw_sub = $r['submitted_at'] ?? $r['created_at'] ?? $r['report_date'] ?? '';
+                $raw_sub = $r['submission_timestamp'] ?? '';
                 $submitted_label = !empty($raw_sub) ? date('m/d/Y h:i A', strtotime($raw_sub)) : '—';
 
-                // Normalize review status
-                $raw_status = strtolower(trim((string)($r['review_status'] ?? $r['status'] ?? 'for_review')));
-                $status_label = match ($raw_sub_status = str_replace([' ', '-'], '_', $raw_status)) {
-                    'reviewed', 'verified', 'approved' => 'Reviewed',
-                    'needs_revision', 'flagged', 'returned' => 'Needs Revision',
-                    default => 'For Review',
-                };
-
-                if ($status_label === 'Reviewed') {
+                $status_label = (string)($r['status'] ?? 'Pending');
+                if ($status_label === 'Verified') {
                     $reviewed_count++;
-                } elseif ($status_label === 'Needs Revision') {
+                } elseif ($status_label === 'For Revision') {
                     $revision_count++;
                 } else {
                     $for_review_count++;
                 }
 
-                // Fetch session attendance & grades for this schedule/class
-                $att_present = 0;
-                $att_total   = 0;
+                // Fetch attendance & grades from vw_session_attendance_grades
+                $att_present  = (int)($r['present_count'] ?? 0) + (int)($r['late_count'] ?? 0);
+                $att_total    = (int)($r['total_recorded'] ?? 0);
                 $learner_logs = [];
+                $grade_logs   = [];
 
-                if ($sched_id > 0) {
-                    $a_stmt = $conn->prepare("
-                        SELECT l.learner_id, l.first_name, l.last_name, a.status, a.remarks
-                        FROM attendance a
-                        JOIN learners l ON l.learner_id = a.learner_id
-                        WHERE a.schedule_id = ?
-                        ORDER BY l.last_name ASC, l.first_name ASC
-                    ");
-                    if ($a_stmt) {
-                        $a_stmt->bind_param('i', $sched_id);
-                        $a_stmt->execute();
-                        $a_res = $a_stmt->get_result();
-                        while ($ar = $a_res->fetch_assoc()) {
-                            $att_total++;
-                            $st = ucfirst(strtolower((string)($ar['status'] ?? 'Present')));
-                            if (in_array($st, ['Present', 'Late'], true)) {
-                                $att_present++;
-                            }
-                            $learner_logs[] = [
-                                'code'    => sprintf('LRN-%05d', (int)$ar['learner_id']),
-                                'name'    => trim($ar['last_name'] . ', ' . $ar['first_name']),
-                                'status'  => $st,
-                                'remarks' => $ar['remarks'] ?? ''
+                $a_stmt = $conn->prepare("
+                    SELECT learner_id, learner_name, attendance_status, session_rating, remarks
+                    FROM vw_session_attendance_grades
+                    WHERE report_id = ?
+                    ORDER BY learner_name ASC
+                ");
+                if ($a_stmt) {
+                    $a_stmt->bind_param('i', $rid);
+                    $a_stmt->execute();
+                    $a_res = $a_stmt->get_result();
+                    while ($ar = $a_res->fetch_assoc()) {
+                        $st = ucfirst(strtolower((string)($ar['attendance_status'] ?? 'present')));
+                        $l_code = sprintf('LRN-%05d', (int)$ar['learner_id']);
+                        $learner_logs[] = [
+                            'code'    => $l_code,
+                            'name'    => $ar['learner_name'],
+                            'status'  => $st,
+                            'remarks' => $ar['remarks'] ?? ''
+                        ];
+                        if (!empty($ar['session_rating'])) {
+                            $grade_logs[] = [
+                                'code'       => $l_code,
+                                'name'       => $ar['learner_name'],
+                                'assessment' => 'Session Rating',
+                                'score'      => $ar['session_rating']
                             ];
                         }
-                        $a_stmt->close();
                     }
+                    $a_stmt->close();
                 }
 
-                // Fetch class grades snapshot
-                $grade_logs = [];
-                $g_stmt = $conn->prepare("
-                    SELECT l.learner_id, l.first_name, l.last_name, g.assessment_title, g.score, g.max_score
-                    FROM grades g
-                    JOIN class_enrollments ce ON ce.enrollment_id = g.enrollment_id
-                    JOIN learners l ON l.learner_id = ce.learner_id
-                    WHERE ce.class_id = ?
-                    ORDER BY l.last_name ASC, g.grade_id DESC
-                ");
-                if ($g_stmt) {
-                    $g_stmt->bind_param('i', $cid);
-                    $g_stmt->execute();
-                    $g_res = $g_stmt->get_result();
-                    while ($gr = $g_res->fetch_assoc()) {
-                        $sc = rtrim(rtrim(number_format((float)$gr['score'], 2), '0'), '.');
-                        $mx = rtrim(rtrim(number_format((float)($gr['max_score'] ?? 100), 2), '0'), '.');
-                        $grade_logs[] = [
-                            'code'       => sprintf('LRN-%05d', (int)$gr['learner_id']),
-                            'name'       => trim($gr['last_name'] . ', ' . $gr['first_name']),
-                            'assessment' => $gr['assessment_title'] ?? 'FSL Assessment',
-                            'score'      => "{$sc} / {$mx}"
-                        ];
-                    }
-                    $g_stmt->close();
-                }
-
-                $photo_path = trim((string)($r['photo_url'] ?? $r['photo_path'] ?? $r['attachment_path'] ?? ''));
-                $summary_text = trim((string)($r['summary'] ?? $r['topic_covered'] ?? $r['remarks'] ?? 'Post-class session summary recorded by educator.'));
+                $photo_path = trim((string)($r['photo_path'] ?? ''));
+                $summary_text = trim((string)($r['summary_notes'] ?? '')) ?: 'Session summary pending completion.';
 
                 $reports_list[] = [
                     'report_id'        => $rid,
@@ -211,7 +186,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                     'teacher_display'  => $teacher_display,
                     'teacher_code'     => $teacher_code,
                     'summary'          => $summary_text,
-                    'coordinator_note' => $r['coordinator_notes'] ?? '',
+                    'coordinator_note' => $r['admin_remarks'] ?? '',
                     'status'           => $status_label,
                     'has_photo'        => $photo_path !== '',
                     'photo_url'        => $photo_path,
@@ -241,7 +216,7 @@ $total_reports = count($reports_list);
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="assets/css/admin.css?v=9">
+    <link rel="stylesheet" href="assets/css/admin.css?v=10">
 </head>
 <body>
 
@@ -291,7 +266,7 @@ $total_reports = count($reports_list);
                             <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
                             <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                         </svg>
-                        <span>Manage Classes</span>
+                        <span>Class</span>
                     </a>
 
                     <a href="admin_reports.php" class="nav-item active">
@@ -398,9 +373,10 @@ $total_reports = count($reports_list);
 
                 <select id="provStatusFilter" class="prov-select">
                     <option value="ALL">All Statuses</option>
-                    <option value="For Review">For Review</option>
-                    <option value="Reviewed">Reviewed</option>
-                    <option value="Needs Revision">Needs Revision</option>
+                    <option value="Finished">Finished (For Review)</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Verified">Verified</option>
+                    <option value="For Revision">For Revision</option>
                 </select>
 
                 <select id="provTeacherFilter" class="prov-select">
@@ -424,9 +400,9 @@ $total_reports = count($reports_list);
                 <?php foreach ($reports_list as $rpt): ?>
                     <?php
                         $status_pill_class = match ($rpt['status']) {
-                            'Reviewed'       => 'rpt-badge-reviewed',
-                            'Needs Revision' => 'rpt-badge-revision',
-                            default          => 'rpt-badge-review',
+                            'Verified'     => 'rpt-badge-reviewed',
+                            'For Revision' => 'rpt-badge-revision',
+                            default        => 'rpt-badge-review',
                         };
                         $payload_json = htmlspecialchars(json_encode($rpt), ENT_QUOTES, 'UTF-8');
                     ?>
@@ -530,9 +506,10 @@ $total_reports = count($reports_list);
                     <div class="roster-field" style="margin-bottom: 0;">
                         <label for="prmReviewStatusSelect">Review Decision</label>
                         <select id="prmReviewStatusSelect">
-                            <option value="For Review">For Review</option>
-                            <option value="Reviewed">Reviewed (Verified)</option>
-                            <option value="Needs Revision">Needs Revision (Flagged)</option>
+                            <option value="Finished">Finished (For Review)</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Verified">Verified</option>
+                            <option value="For Revision">For Revision</option>
                         </select>
                     </div>
                     <div class="roster-field" style="margin-bottom: 0;">
@@ -553,7 +530,8 @@ $total_reports = count($reports_list);
     </div>
 </div>
 
-<script src="assets/js/admin_reports.js?v=2"></script>
+<?php include __DIR__ . '/includes/logout_modal.php'; ?>
+<script src="assets/js/admin_reports.js?v=3"></script>
 
 </body>
 </html>

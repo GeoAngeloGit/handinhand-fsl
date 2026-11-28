@@ -281,26 +281,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
 // ==================== DELETE USER (PERSISTED TO MYSQL) ====================
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', async () => {
-            if (!activeUser || !activeCard) return;
+    if (modalDeleteBtn) {
+        modalDeleteBtn.addEventListener('click', async () => {
+            if (!currentDataRef || !currentCardRef) return;
 
             const confirmed = confirm(
-                `Delete ${activeUser.full_name} (${activeUser.display_code})?\n\nIf this user has historical class or grade records, their account will be set to Inactive instead.`
+                `Delete ${currentDataRef.full_name} (${currentDataRef.code})?\n\nIf this user has historical class or grade records, their account will be set to Inactive instead.`
             );
             if (!confirmed) return;
 
-            deleteBtn.disabled = true;
-            deleteBtn.textContent = 'Deleting...';
+            const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+            modalDeleteBtn.disabled = true;
+            modalDeleteBtn.textContent = 'Deleting...';
 
             try {
                 const res = await fetch('actions/admin_delete_user.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        csrf_token: csrfToken,
-                        account_id: activeUser.account_id,
-                        role_type: activeUser.role_type
+                        csrf_token: tokenMeta ? tokenMeta.content : '',
+                        account_id: currentDataRef.account_id || 0,
+                        role_type: currentDataRef.type || ''
                     })
                 });
                 const data = await res.json();
@@ -310,13 +311,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                closeModal();
+                closeProfileModal();
                 window.location.reload();
             } catch (err) {
                 alert('Network error while deleting user.');
             } finally {
-                deleteBtn.disabled = false;
-                deleteBtn.textContent = 'Delete User';
+                modalDeleteBtn.disabled = false;
+                modalDeleteBtn.textContent = 'Delete User';
             }
         });
     }
